@@ -1,0 +1,49 @@
+# .claspignore
+# Ignore everything by default, then allow only files needed for a Google Apps Script project
+
+# Ignore all files
+*
+
+# Keep the clasp ignore file and clasp config itself
+!.claspignore
+!.clasp.json
+
+# Keep the Apps Script manifest and source files (GS/JS/HTML/CSS)
+!appsscript.json
+!*.gs
+!*.js
+!*.html
+!*.css
+
+# The lines above are the important part: only the manifest and script/html/css files
+# will be uploaded by `clasp push`. The rest of this file lists common dev files so
+# they are clearly excluded (mostly redundant because of the '*' rule above).
+
+# Common local/dev files
+node_modules/
+.env
+.env.local
+.env.*.local
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# Package & build files
+package.json
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+tsconfig.json
+*.ts
+dist/
+build/
+src/
+*.map
+
+# Docs, tests and coverage
+README.md
+*.md
+coverage/
+tests/
+__tests__/

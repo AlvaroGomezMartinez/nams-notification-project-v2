@@ -1,0 +1,90 @@
+### General sensitive files
+# Environment variables and secrets
+.env
+.env.*
+*.env
+
+# API keys, credentials, tokens
+secrets.json
+credentials.json
+client_secret.json
+service-account.json
+*.pem
+*.key
+*.crt
+
+### macOS
+.DS_Store
+.AppleDouble
+._*
+Icon
+
+### Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+### Node modules and build
+node_modules/
+/dist
+/build
+/.parcel-cache
+/.next
+/out
+
+### VS Code
+.vscode/
+.history/
+/vscode/**/history
+
+### JetBrains IDEs
+.idea/
+*.iml
+
+### Google Apps Script / clasp
+.clasp.json
+.gasconfig
+/.gas/
+/.clasprc.json
+
+### Editor swap/backup files
+*~
+# temporary files
+*.swp
+*.swo
+*.tmp
+
+### Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+### Certificates and keys
+*.p12
+*.jks
+
+### OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+### Archive files (optional)
+*.zip
+*.tar.gz
+*.rar
+
+### Other secrets
+*.secret
+secrets/
+credentials/
+
+### Ignore local environment files used by the project
+local.settings.json
+
+### Project specific: keep only source files
+!/*.html
+!/*.js

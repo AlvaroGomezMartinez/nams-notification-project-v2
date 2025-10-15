@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Restroom Sign-Out</title>
+    <!-- Import Materialize CSS -->
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      .highlight {
+        background-color: #ffff99; /* light yellow highlight */
+      }
+      .hold-text {
+        color: red;
+      }
+      .out-btn {
+        background-color: #f9a825; /* amber/dark yellow */
+        color: white;
+      }
+      .back-btn {
+        background-color: #43a047; /* green */
+        color: white;
+      }
+      .table-container {
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container" x-data="appData()" x-init="init()">
+      <h5 x-text="dateString"></h5>
+      <h6 x-text="'Period: ' + periodString"></h6>
+
+      <!-- Main table -->
+      <div class="table-container">
+        <table class="striped">
+          <thead>
+            <tr>
+              <th>Student Name</th>
+              <th>G / B</th>
+              <th>Teacher</th>
+              <th>Out</th>
+              <th>Out Time</th>
+              <th>Back</th>
+              <th>Back Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="stu in students" :key="stu.name">
+              <tr :class="{ highlight: isNextInQueue(stu) }">
+                <td x-text="stu.name"></td>
+                <td>
+                  <select x-model="stu.gender" @change="onGenderChange(stu)" class="browser-default">
+                    <option value="G">G</option>
+                    <option value="B">B</option>
+                  </select>
+                </td>
+                <td>
+                  <select x-model="stu.teacher" @change="onTeacherChange(stu)" class="browser-default">
+                    <template x-for="t in teachers" :key="t">
+                      <option x-text="t" :value="t"></option>
+                    </template>
+                  </select>
+                </td>
+                <td>
+                  <button
+                    class="btn out-btn"
+                    :disabled="stu.outTime || stu.holdNotice"
+                    @click="markOut(stu)"
+                  >
+                    Out
+                  </button>
+                </td>
+                <td>
+                  <span x-text="stu.outTime || stu.holdNotice"></span>
+                </td>
+                <td>
+                  <button
+                    class="btn back-btn"
+                    :disabled="!stu.outTime || stu.backTime"
+                    @click="markBack(stu)"
+                  >
+                    Back
+                  </button>
+                </td>
+                <td>
+                  <span x-text="stu.backTime"></span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <br />
+
+      <!-- Queue table -->
+      <h5>Waiting List</h5>
+      <table class="striped">
+        <thead>
+          <tr>
+            <th>Girls</th>
+            <th>Boys</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <template x-for="(g, idx) in queue.girls" :key="g">
+                <div :class="{ highlight: idx === 0 }" x-text="g"></div>
+              </template>
+            </td>
+            <td>
+              <template x-for="(b, idx) in queue.boys" :key="b">
+                <div :class="{ highlight: idx === 0 }" x-text="b"></div>
+              </template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Alpine.js -->
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Materialize JS (for any components) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+    <script>
+      function appData() {
+        return {
+          dateString: "",
+          periodString: "",
+          teachers: ["Teacher A", "Teacher B", "Teacher C" /* … add all 17 */],
+          students: [],
+          queue: { girls: [], boys: [] },
+
+          init() {
+            this.refreshData();
+            // Optionally you can poll every few seconds to keep data in sync:
+            setInterval(() => this.refreshData(), 5000);
+          },
+
+          refreshData() {
+            google.script.run
+              .withSuccessHandler((resp) => {
+                this.handleFetch(resp);
+              })
+              .api_fetchData();
+          },
+
+          handleFetch(resp) {
+            // resp has { students, queue }
+            this.students = resp.students.map((s) => ({
+              name: s.name,
+              gender: s.gender || "G",
+              teacher: s.teacher || this.teachers[0],
+              outTime: s.outTime ? this.formatDate(s.outTime) : "",
+              backTime: s.backTime ? this.formatDate(s.backTime) : "",
+              holdNotice: s.holdNotice || ""
+            }));
+            this.queue = resp.queue;
+            // Also set dateString and periodString
+            // For now, you can get them from resp or compute them
+            const now = new Date();
+            this.dateString = now.toLocaleDateString();
+            this.periodString = "1st Period (Emergency only)"; // you can override
+          },
+
+          formatDate(dt) {
+            if (!dt) return "";
+            const d = new Date(dt);
+            return d.toLocaleTimeString();
+          },
+
+          isNextInQueue(stu) {
+            const q = this.queue[stu.gender === "G" ? "girls" : "boys"];
+            return q.length > 0 && q[0] === stu.name;
+          },
+
+          onGenderChange(stu) {
+            // you might want to send update to server that gender changed
+          },
+          onTeacherChange(stu) {
+            // same: maybe notify server
+          },
+
+          markOut(stu) {
+            google.script.run
+              .withSuccessHandler((resp) => {
+                this.handleFetch(resp);
+              })
+              .api_updateStatus(stu.name, "out", stu.teacher, stu.gender);
+          },
+
+          markBack(stu) {
+            google.script.run
+              .withSuccessHandler((resp) => {
+                this.handleFetch(resp);
+              })
+              .api_updateStatus(stu.name, "back", stu.teacher, stu.gender);
+          }
+        };
+      }
+    </script>
+  </body>
+</html>
