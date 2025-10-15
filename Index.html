@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Restroom Sign-Out</title>
+    <title>NAMS Restroom Sign-Out</title>
     <!-- Import Materialize CSS -->
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css"
@@ -122,8 +122,6 @@
       </table>
     </div>
 
-    <!-- Alpine.js -->
-    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <!-- Materialize JS (for any components) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
 
@@ -132,7 +130,12 @@
         return {
           dateString: "",
           periodString: "",
-          teachers: ["Teacher A", "Teacher B", "Teacher C" /* … add all 17 */],
+          teachers: [
+            "Teacher A", "Teacher B", "Teacher C", "Teacher D", "Teacher E",
+            "Teacher F", "Teacher G", "Teacher H", "Teacher I", "Teacher J",
+            "Teacher K", "Teacher L", "Teacher M", "Teacher N", "Teacher O",
+            "Teacher P", "Teacher Q"
+          ],
           students: [],
           queue: { girls: [], boys: [] },
 
@@ -145,13 +148,18 @@
           refreshData() {
             google.script.run
               .withSuccessHandler((resp) => {
+                console.log('Received data:', resp);
                 this.handleFetch(resp);
+              })
+              .withFailureHandler((error) => {
+                console.error('Error fetching data:', error);
               })
               .api_fetchData();
           },
 
           handleFetch(resp) {
             // resp has { students, queue }
+            console.log('Processing students:', resp.students);
             this.students = resp.students.map((s) => ({
               name: s.name,
               gender: s.gender || "G",
@@ -161,6 +169,7 @@
               holdNotice: s.holdNotice || ""
             }));
             this.queue = resp.queue;
+            console.log('Final students array:', this.students);
             // Also set dateString and periodString
             // For now, you can get them from resp or compute them
             const now = new Date();
@@ -204,5 +213,8 @@
         };
       }
     </script>
+    
+    <!-- Alpine.js - loaded after appData function is defined -->
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   </body>
 </html>
