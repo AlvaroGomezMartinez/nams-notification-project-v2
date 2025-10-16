@@ -19,9 +19,21 @@
         background-color: #f9a825; /* amber/dark yellow */
         color: white;
       }
+      .out-btn.disabled {
+        background-color: #9e9e9e !important; /* grey when disabled */
+        color: #ffffff !important;
+        pointer-events: none;
+        opacity: 0.6;
+      }
       .back-btn {
         background-color: #43a047; /* green */
         color: white;
+      }
+      .back-btn.disabled {
+        background-color: #9e9e9e !important; /* grey when disabled */
+        color: #ffffff !important;
+        pointer-events: none;
+        opacity: 0.6;
       }
       .table-container {
         overflow-x: auto;
@@ -32,6 +44,16 @@
     <div class="container" x-data="appData()" x-init="init()">
       <h5 x-text="dateString"></h5>
       <h6 x-text="'Period: ' + periodString"></h6>
+      
+      <!-- Debug button - remove this after troubleshooting -->
+      <div class="row">
+        <div class="col s12">
+          <button class="btn red" @click="debugSheet()">Debug Sheet Structure</button>
+          <button class="btn orange" @click="debugLogSheet()">Debug Log Entries</button>
+          <small style="margin-left: 10px;">Check browser console for output</small>
+        </div>
+      </div>
+      <br />
 
       <!-- Main table -->
       <div class="table-container">
@@ -67,8 +89,9 @@
                 <td>
                   <button
                     class="btn out-btn"
-                    :disabled="stu.outTime || stu.holdNotice"
+                    :class="{ 'disabled': stu.outTime || stu.holdNotice }"
                     @click="markOut(stu)"
+                    :title="'Out disabled: ' + (stu.outTime || stu.holdNotice ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | holdNotice: ' + stu.holdNotice"
                   >
                     Out
                   </button>
@@ -79,8 +102,9 @@
                 <td>
                   <button
                     class="btn back-btn"
-                    :disabled="!stu.outTime || stu.backTime"
+                    :class="{ 'disabled': !stu.outTime || stu.backTime }"
                     @click="markBack(stu)"
+                    :title="'Back disabled: ' + (!stu.outTime || stu.backTime ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | backTime: ' + stu.backTime"
                   >
                     Back
                   </button>
@@ -141,11 +165,12 @@
 
           init() {
             this.refreshData();
-            // Optionally you can poll every few seconds to keep data in sync:
-            setInterval(() => this.refreshData(), 5000);
+            // Poll every 30 seconds to keep data in sync:
+            setInterval(() => this.refreshData(), 30000);
           },
 
           refreshData() {
+            console.log('Fetching data from Google Apps Script...');
             google.script.run
               .withSuccessHandler((resp) => {
                 console.log('Received data:', resp);
@@ -153,6 +178,8 @@
               })
               .withFailureHandler((error) => {
                 console.error('Error fetching data:', error);
+                // Show user-friendly error message
+                alert('Error loading student data. Please refresh the page or contact support.');
               })
               .api_fetchData();
           },
@@ -160,14 +187,35 @@
           handleFetch(resp) {
             // resp has { students, queue }
             console.log('Processing students:', resp.students);
-            this.students = resp.students.map((s) => ({
-              name: s.name,
-              gender: s.gender || "G",
-              teacher: s.teacher || this.teachers[0],
-              outTime: s.outTime ? this.formatDate(s.outTime) : "",
-              backTime: s.backTime ? this.formatDate(s.backTime) : "",
-              holdNotice: s.holdNotice || ""
-            }));
+            this.students = resp.students.map((s) => {
+              const processedStudent = {
+                name: s.name,
+                gender: s.gender || "G",
+                teacher: s.teacher || this.teachers[0],
+                outTime: s.outTime ? this.formatDate(s.outTime) : "",
+                backTime: s.backTime ? this.formatDate(s.backTime) : "",
+                holdNotice: s.holdNotice || ""
+              };
+              
+              // Debug first few students
+              if (resp.students.indexOf(s) < 3) {
+                console.log(`Student ${s.name}:`, s);
+                console.log(`Processed ${s.name}:`, processedStudent);
+                console.log(`${s.name} detailed values:`, {
+                  'outTime': `"${processedStudent.outTime}"` + ` (length: ${processedStudent.outTime.length})`,
+                  'holdNotice': `"${processedStudent.holdNotice}"` + ` (length: ${processedStudent.holdNotice.length})`,
+                  'backTime': `"${processedStudent.backTime}"` + ` (length: ${processedStudent.backTime.length})`,
+                  'outTime type': typeof processedStudent.outTime,
+                  'holdNotice type': typeof processedStudent.holdNotice,
+                  'outTime truthy': !!processedStudent.outTime,
+                  'holdNotice truthy': !!processedStudent.holdNotice,
+                  'outButtonDisabled': !!(processedStudent.outTime || processedStudent.holdNotice),
+                  'backButtonDisabled': !(processedStudent.outTime && !processedStudent.backTime)
+                });
+              }
+              
+              return processedStudent;
+            });
             this.queue = resp.queue;
             console.log('Final students array:', this.students);
             // Also set dateString and periodString
@@ -179,7 +227,14 @@
 
           formatDate(dt) {
             if (!dt) return "";
+            // Check if it's already a string that's not a valid date
+            if (typeof dt === 'string' && isNaN(Date.parse(dt))) {
+              return dt; // Return as-is if it's not a valid date string
+            }
             const d = new Date(dt);
+            if (isNaN(d.getTime())) {
+              return dt; // Return original value if invalid date
+            }
             return d.toLocaleTimeString();
           },
 
@@ -189,24 +244,82 @@
           },
 
           onGenderChange(stu) {
-            // you might want to send update to server that gender changed
+            // Update gender on the server
+            console.log('Gender changed for', stu.name, 'to', stu.gender);
           },
           onTeacherChange(stu) {
-            // same: maybe notify server
+            // Update teacher on the server
+            console.log('Teacher changed for', stu.name, 'to', stu.teacher);
+          },
+
+          // Debug function to check spreadsheet structure
+          debugSheet() {
+            console.log('Debugging sheet structure...');
+            google.script.run
+              .withSuccessHandler((resp) => {
+                console.log('Sheet debug info:', resp);
+                alert('Sheet info logged to console. Check developer tools.');
+              })
+              .withFailureHandler((error) => {
+                console.error('Error debugging sheet:', error);
+              })
+              .api_debugSheet();
+          },
+
+          // Debug function to check Log sheet entries
+          debugLogSheet() {
+            console.log('Debugging Log sheet entries...');
+            google.script.run
+              .withSuccessHandler((resp) => {
+                console.log('Log sheet debug info:', resp);
+                alert(`Found ${resp.todaysEntries ? resp.todaysEntries.length : 0} entries for today. Check console for details.`);
+              })
+              .withFailureHandler((error) => {
+                console.error('Error debugging log sheet:', error);
+              })
+              .api_debugLogSheet();
           },
 
           markOut(stu) {
+            console.log('markOut button clicked for:', stu.name);
+            console.log('Student data:', stu);
+            console.log('Calling api_updateStatus with:', {
+              name: stu.name,
+              action: "out", 
+              teacher: stu.teacher,
+              gender: stu.gender
+            });
+            
             google.script.run
               .withSuccessHandler((resp) => {
+                console.log('Mark out successful:', resp);
                 this.handleFetch(resp);
+              })
+              .withFailureHandler((error) => {
+                console.error('Error marking out:', error);
+                alert('Error marking student out. Please try again.');
               })
               .api_updateStatus(stu.name, "out", stu.teacher, stu.gender);
           },
 
           markBack(stu) {
+            console.log('markBack button clicked for:', stu.name);
+            console.log('Student data:', stu);
+            console.log('Calling api_updateStatus with:', {
+              name: stu.name,
+              action: "back", 
+              teacher: stu.teacher,
+              gender: stu.gender
+            });
+            
             google.script.run
               .withSuccessHandler((resp) => {
+                console.log('Mark back successful:', resp);
                 this.handleFetch(resp);
+              })
+              .withFailureHandler((error) => {
+                console.error('Error marking back:', error);
+                alert('Error marking student back. Please try again.');
               })
               .api_updateStatus(stu.name, "back", stu.teacher, stu.gender);
           }
