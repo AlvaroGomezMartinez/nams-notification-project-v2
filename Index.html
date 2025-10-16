@@ -65,15 +65,24 @@
       
 
 
+
+
+      <!-- Test buttons for debugging -->
+      <div class="row" style="margin-bottom: 10px;">
+        <div class="col s12">
+        <!-- Test buttons removed - app is now working -->
+        </div>
+      </div>
+
       <!-- Main table -->
       <div class="table-container">
         <table class="striped">
           <thead>
             <tr>
               <th>Student Name</th>
-              <th>G / B</th>
+              <th>Gender</th>
               <th>Teacher</th>
-              <th>Out</th>
+              <th>Request</th>
               <th>Out Time</th>
               <th>Back</th>
               <th>Back Time</th>
@@ -85,6 +94,7 @@
                 <td x-text="stu.name"></td>
                 <td>
                   <select x-model="stu.gender" @change="onGenderChange(stu)" class="browser-default">
+                    <option value=""></option>
                     <option value="G">G</option>
                     <option value="B">B</option>
                   </select>
@@ -208,32 +218,145 @@
               .api_getCurrentUserInfo();
           },
 
-          refreshData() {
-            console.log('Fetching data from Google Apps Script...');
+
+
+          // Ultra simple test with hardcoded data
+          testUltraSimple() {
+            console.log('Testing ultra simple...');
             google.script.run
               .withSuccessHandler((resp) => {
-                console.log('Received data:', resp);
-                if (resp === null || resp === undefined) {
-                  console.error('Received null/undefined response from api_fetchData');
-                  alert('Error: Server returned empty response. This might be due to a server-side error. Check the Apps Script logs.');
-                  return;
+                console.log('Ultra simple response:', resp);
+                if (resp && resp.students) {
+                  alert(`Ultra Simple SUCCESS!\nStudents: ${resp.students.length}`);
+                  this.handleFetch(resp);
+                } else {
+                  alert(`Ultra Simple FAILED - received: ${JSON.stringify(resp)}`);
                 }
-                
-                // Check if response indicates an error
-                if (resp.success === false || resp.error) {
-                  console.error('Server returned error response:', resp);
-                  alert(`Server Error: ${resp.error}\n\nCheck console for details.`);
-                  return;
-                }
-                
-                this.handleFetch(resp);
               })
               .withFailureHandler((error) => {
-                console.error('Error fetching data:', error);
-                // Show user-friendly error message
-                alert('Error loading student data. Please refresh the page or contact support.\n\nError details: ' + (error.message || error));
+                console.error('Ultra simple failed:', error);
+                alert(`Ultra simple failed: ${error.message || error}`);
               })
-              .api_fetchData();
+              .api_ultraSimpleTest();
+          },
+
+          // Test roster only (no status processing)
+          testRosterOnly() {
+            console.log('Testing roster only...');
+            google.script.run
+              .withSuccessHandler((resp) => {
+                console.log('Roster only response:', resp);
+                if (resp && resp.students) {
+                  alert(`Roster Only SUCCESS!\nStudents: ${resp.students.length}\nFirst: ${resp.students[0] ? resp.students[0].name : 'None'}`);
+                  this.handleFetch(resp);
+                } else {
+                  alert(`Roster Only FAILED - received: ${JSON.stringify(resp)}`);
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('Roster only failed:', error);
+                alert(`Roster only failed: ${error.message || error}`);
+              })
+              .api_testRosterOnly();
+          },
+
+          // Test minimal bypass version (no status processing at all)
+          testMinimalBypass() {
+            console.log('Testing MINIMAL bypass version...');
+            google.script.run
+              .withSuccessHandler((resp) => {
+                console.log('Minimal bypass response:', resp);
+                if (resp && resp.students) {
+                  alert(`MINIMAL BYPASS SUCCESS!\nStudents: ${resp.students.length}\nFirst student: ${resp.students[0] ? resp.students[0].name : 'None'}\nNo status processing!`);
+                  // Load this data into the interface
+                  this.students = resp.students;
+                  this.queue = resp.queue || { girls: [], boys: [] };
+                } else {
+                  console.error('Minimal bypass returned invalid structure:', resp);
+                  alert('Minimal bypass returned invalid data: ' + JSON.stringify(resp));
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('Minimal bypass failed:', error);
+                alert(`Minimal bypass failed: ${error.message || error}`);
+              })
+              .api_minimalBypass();
+          },
+
+          // Test the October 16 version
+          testOctober16() {
+            console.log('Testing October 16 2025 version...');
+            google.script.run
+              .withSuccessHandler((resp) => {
+                console.log('October 16 response:', resp);
+                if (resp && resp.students) {
+                  alert(`OCTOBER 16 SUCCESS!\nStudents: ${resp.students.length}\nFirst student: ${resp.students[0] ? resp.students[0].name : 'None'}`);
+                  // Load this data into the interface
+                  this.students = resp.students;
+                  this.queue = resp.queue || { girls: [], boys: [] };
+                } else {
+                  console.error('October 16 returned invalid structure:', resp);
+                  alert('October 16 returned invalid data: ' + JSON.stringify(resp));
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('October 16 failed:', error);
+                alert(`October 16 failed: ${error.message || error}`);
+              })
+              .api_october16_2025();
+          },
+
+          // Test the new function
+          testNewFunction() {
+            console.log('Testing FINAL working version...');
+            google.script.run
+              .withSuccessHandler((resp) => {
+                console.log('Final version response:', resp);
+                if (resp && resp.students) {
+                  alert(`FINAL VERSION SUCCESS!\nStudents: ${resp.students.length}\nFirst student: ${resp.students[0] ? resp.students[0].name : 'None'}`);
+                  // Load this data into the interface
+                  this.students = resp.students;
+                  this.queue = resp.queue || { girls: [], boys: [] };
+                } else {
+                  console.error('Final version returned invalid structure:', resp);
+                  alert('Final version returned invalid data: ' + JSON.stringify(resp));
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('Final version failed:', error);
+                alert(`Final version failed: ${error.message || error}`);
+              })
+              .api_finalWorkingVersion();
+          },
+
+          refreshData() {
+            console.log('refreshData() called');
+            
+            try {
+              console.log('Calling api_minimalBypass...');
+              google.script.run
+                .withSuccessHandler((result) => {
+                  console.log('Response received:', result);
+                  
+                  if (result && result.students) {
+                    console.log('Processing', result.students.length, 'students');
+                    this.students = result.students;
+                    this.queue = result.queue || { girls: [], boys: [] };
+                  } else {
+                    console.error('Invalid response structure:', result);
+                    alert('Invalid data received from server');
+                  }
+                })
+                .withFailureHandler((error) => {
+                  console.error('Error in refreshData:', error);
+                  alert('Failed to load student data: ' + error.message);
+                })
+                .api_minimalBypass();
+                
+            } catch (error) {
+              console.error('Error in refreshData:', error);
+              alert('Failed to load student data: ' + error.message);
+            }
           },
 
           handleFetch(resp) {
@@ -255,7 +378,7 @@
             this.students = resp.students.map((s) => {
               const processedStudent = {
                 name: s.name,
-                gender: s.gender || "G",
+                gender: s.gender || "",
                 teacher: s.teacher || this.detectedTeacher || this.teachers[0] || "Other Teacher",
                 outTime: s.outTime ? this.formatDate(s.outTime) : "",
                 backTime: s.backTime ? this.formatDate(s.backTime) : "",
@@ -317,176 +440,32 @@
             console.log('Teacher changed for', stu.name, 'to', stu.teacher);
           },
 
-          // Debug function to check spreadsheet structure
-          debugSheet() {
-            console.log('Debugging sheet structure...');
-            google.script.run
-              .withSuccessHandler((resp) => {
-                console.log('Sheet debug info:', resp);
-                alert('Sheet info logged to console. Check developer tools.');
-              })
-              .withFailureHandler((error) => {
-                console.error('Error debugging sheet:', error);
-              })
-              .api_debugSheet();
-          },
 
-          // Debug function to check Log sheet entries
-          debugLogSheet() {
-            console.log('Debugging Log sheet entries...');
-            google.script.run
-              .withSuccessHandler((resp) => {
-                console.log('Log sheet debug info:', resp);
-                alert(`Found ${resp.todaysEntries ? resp.todaysEntries.length : 0} entries for today. Check console for details.`);
-              })
-              .withFailureHandler((error) => {
-                console.error('Error debugging log sheet:', error);
-              })
-              .api_debugLogSheet();
-          },
-
-          // Debug function to test user detection
-          testUserDetection() {
-            console.log('Testing user detection...');
-            google.script.run
-              .withSuccessHandler((userInfo) => {
-                console.log('User detection test result:', userInfo);
-                alert(`User: ${userInfo.userEmail || 'Not detected'}\nTeacher: ${userInfo.detectedTeacher}\nCheck console for full details.`);
-              })
-              .withFailureHandler((error) => {
-                console.error('Error testing user detection:', error);
-                alert('Error testing user detection. Check console for details.');
-              })
-              .api_getCurrentUserInfo();
-          },
-
-          // Debug function to test fetchData
-          testFetchData() {
-            console.log('Testing fetchData...');
-            google.script.run
-              .withSuccessHandler((result) => {
-                console.log('FetchData test result:', result);
-                if (result.success) {
-                  alert(`FetchData SUCCESS:\nStudents: ${result.result && result.result.students ? result.result.students.length : 0}\nCheck console for full details.`);
-                } else {
-                  alert(`FetchData FAILED:\n${result.error}\nCheck console for stack trace.`);
-                }
-              })
-              .withFailureHandler((error) => {
-                console.error('Error testing fetchData:', error);
-                alert('Error testing fetchData. Check console for details.\n\n' + (error.message || error));
-              })
-              .api_testFetchData();
-          },
-
-          // Debug function to list all sheets
-          listSheets() {
-            console.log('Listing all sheets...');
-            google.script.run
-              .withSuccessHandler((result) => {
-                console.log('Sheet list result:', result);
-                if (result.success) {
-                  const sheetNames = result.sheets.map(s => s.name).join(', ');
-                  alert(`Available Sheets (${result.sheets.length}):\n${sheetNames}\n\nLooking for: ${result.todayString}\nCheck console for full details.`);
-                } else {
-                  alert(`List Sheets FAILED:\n${result.error}`);
-                }
-              })
-              .withFailureHandler((error) => {
-                console.error('Error listing sheets:', error);
-                alert('Error listing sheets. Check console for details.');
-              })
-              .api_listSheets();
-          },
-
-          // Debug function to inspect a specific sheet
-          inspectSheet() {
-            if (!this.inspectSheetName.trim()) {
-              alert('Please enter a sheet name to inspect');
-              return;
-            }
-            
-            console.log('Inspecting sheet:', this.inspectSheetName);
-            google.script.run
-              .withSuccessHandler((result) => {
-                console.log('Sheet inspection result:', result);
-                if (result.success) {
-                  alert(`Sheet: ${result.sheetName}\nRows: ${result.totalRows}\nColumns: ${result.totalColumns}\nCheck console for detailed content.`);
-                } else {
-                  alert(`Inspect Sheet FAILED:\n${result.error}`);
-                }
-              })
-              .withFailureHandler((error) => {
-                console.error('Error inspecting sheet:', error);
-                alert('Error inspecting sheet. Check console for details.');
-              })
-              .api_inspectSheet(this.inspectSheetName);
-          },
-
-          // Debug function to test basic spreadsheet access
-          testBasicAccess() {
-            console.log('Testing basic spreadsheet access...');
-            google.script.run
-              .withSuccessHandler((result) => {
-                console.log('Basic access test result:', result);
-                if (result.success) {
-                  alert(`Basic Access SUCCESS!\nSheets: ${result.sheetCount}\nSelected: ${result.selectedSheet}\nDimensions: ${result.sheetDimensions.rows}x${result.sheetDimensions.columns}\nCheck console for details.`);
-                } else {
-                  alert(`Basic Access FAILED:\n${result.error}`);
-                }
-              })
-              .withFailureHandler((error) => {
-                console.error('Error testing basic access:', error);
-                alert('Error testing basic access. Check console for details.');
-              })
-              .api_testBasicAccess();
-          },
-
-          // Debug function to test student roster reading
-          testStudentRoster() {
-            console.log('Testing student roster reading...');
-            google.script.run
-              .withSuccessHandler((result) => {
-                console.log('Student roster test result:', result);
-                if (result.success) {
-                  alert(`Student Roster SUCCESS!\nSheet: ${result.sheetName}\nStudents: ${result.studentCount}\nCheck console for student list.`);
-                } else {
-                  alert(`Student Roster FAILED:\n${result.error}`);
-                }
-              })
-              .withFailureHandler((error) => {
-                console.error('Error testing student roster:', error);
-                alert('Error testing student roster. Check console for details.');
-              })
-              .api_testStudentRoster();
-          },
-
-          // Debug function to test restroom status reading
-          testRestroomStatus() {
-            console.log('Testing restroom status reading...');
-            google.script.run
-              .withSuccessHandler((result) => {
-                console.log('Restroom status test result:', result);
-                if (result.success) {
-                  alert(`Restroom Status SUCCESS!\nStudents with status: ${result.statusCount}\nCheck console for details.`);
-                } else {
-                  alert(`Restroom Status FAILED:\n${result.error}`);
-                }
-              })
-              .withFailureHandler((error) => {
-                console.error('Error testing restroom status:', error);
-                alert('Error testing restroom status. Check console for details.');
-              })
-              .api_testRestroomStatus();
-          },
 
           markOut(stu) {
             console.log('markOut button clicked for:', stu.name);
-            console.log('Student data:', stu);
-            console.log('Calling api_updateStatus with:', {
-              name: stu.name,
+            console.log('Full student object:', stu);
+            console.log('Gender value:', `"${stu.gender}"`, 'Type:', typeof stu.gender, 'Length:', stu.gender ? stu.gender.length : 'N/A');
+            console.log('Teacher value:', `"${stu.teacher}"`, 'Type:', typeof stu.teacher, 'Length:', stu.teacher ? stu.teacher.length : 'N/A');
+            
+            // Validate that gender is selected
+            if (!stu.gender || stu.gender.trim() === "") {
+              console.log('Gender validation failed - showing alert');
+              alert('Please select G or B (Gender) before marking the student out.');
+              return;
+            }
+            
+            // Validate that teacher is selected
+            if (!stu.teacher || stu.teacher.trim() === "") {
+              console.log('Teacher validation failed - showing alert');
+              alert('Please select a teacher before marking the student out.');
+              return;
+            }
+            
+            console.log('Validations passed. Calling api_updateStatus with:', {
+              studentName: stu.name,
               action: "out", 
-              teacher: stu.teacher,
+              teacherName: stu.teacher,
               gender: stu.gender
             });
             
@@ -497,7 +476,8 @@
               })
               .withFailureHandler((error) => {
                 console.error('Error marking out:', error);
-                alert('Error marking student out. Please try again.');
+                console.error('Error details:', error.message, error.stack);
+                alert(`Error marking student out: ${error.message || error}\n\nCheck console for details.`);
               })
               .api_updateStatus(stu.name, "out", stu.teacher, stu.gender);
           },

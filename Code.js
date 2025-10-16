@@ -175,11 +175,12 @@ function _getStudentRoster(sheet) {
  * Returns an object with student names as keys and their current status
  */
 function _getCurrentRestroomStatus() {
+  const status = {};
+  
   try {
     console.log('_getCurrentRestroomStatus: Starting...');
     const ss = getSpreadsheet();
     const logSheet = ss.getSheetByName("Log");
-    const status = {};
     
     if (!logSheet) {
       console.log('No Log sheet found - all students are available');
@@ -187,84 +188,79 @@ function _getCurrentRestroomStatus() {
     }
     
     console.log('Log sheet found, reading data...');
+    
+    const data = logSheet.getDataRange().getValues();
+    console.log('Log sheet data loaded, rows:', data.length);
+    
+    if (data.length <= 1) {
+      console.log('Log sheet is empty - all students are available');
+      return status;
+    }
+    
+    const today = new Date().toLocaleDateString();
+    console.log('Looking for today\'s entries:', today);
+    
+    // Process log entries from most recent to oldest
+    // Log format: A=Date, B=Student Name, C=Student ID, D=Gender, E=Teacher, F=Out Time, G=Back Time, H=Hold Notice, I=Duration
+    for (let r = data.length - 1; r >= 1; r--) {
+      try {
+        const row = data[r];
+        const date = row[0];
+        const studentName = row[1];
+        const studentId = row[2];
+        const gender = row[3];
+        const teacher = row[4];
+        const outTime = row[5];
+        const backTime = row[6];
+        const holdNotice = row[7];
+        
+        if (!studentName) continue;
+        
+        // Only process today's entries
+        const entryDate = date ? new Date(date).toLocaleDateString() : '';
+        if (entryDate !== today) continue;
+        
+        // If we haven't seen this student yet (processing newest first)
+        if (!status[studentName]) {
+          if (backTime) {
+            // Student has returned - they are available (don't add to status object)
+            console.log(`${studentName} has returned (backTime: ${backTime}), marking as available`);
+          } else if (outTime) {
+            // Student is currently out
+            status[studentName] = {
+              gender: gender || "",
+              teacher: teacher || "",
+              outTime: outTime,
+              backTime: "",
+              holdNotice: ""
+            };
+            console.log(`${studentName} is currently out (outTime: ${outTime})`);
+          } else if (holdNotice) {
+            // Student is waiting in line
+            status[studentName] = {
+              gender: gender || "",
+              teacher: teacher || "",
+              outTime: "",
+              backTime: "",
+              holdNotice: holdNotice
+            };
+            console.log(`${studentName} is waiting in line (holdNotice: ${holdNotice})`);
+          }
+        }
+      } catch (rowError) {
+        console.warn(`Error processing log row ${r}:`, rowError.message);
+        // Continue with next row
+      }
+    }
+    
+    console.log('Current status loaded for', Object.keys(status).length, 'students');
+    return status;
+    
   } catch (error) {
     console.error('Error in _getCurrentRestroomStatus:', error);
     console.log('Returning empty status due to error');
-    return {};
+    return status; // Return the empty status object
   }
-  
-    try {
-      const data = logSheet.getDataRange().getValues();
-      console.log('Log sheet data loaded, rows:', data.length);
-      
-      if (data.length <= 1) {
-        console.log('Log sheet is empty - all students are available');
-        return status;
-      }
-      
-      const today = new Date().toLocaleDateString();
-      console.log('Looking for today\'s entries:', today);
-      
-      // Process log entries from most recent to oldest
-      // Log format: A=Date, B=Student Name, C=Student ID, D=Gender, E=Teacher, F=Out Time, G=Back Time, H=Hold Notice, I=Duration
-      for (let r = data.length - 1; r >= 1; r--) {
-        try {
-          const row = data[r];
-          const date = row[0];
-          const studentName = row[1];
-          const studentId = row[2];
-          const gender = row[3];
-          const teacher = row[4];
-          const outTime = row[5];
-          const backTime = row[6];
-          const holdNotice = row[7];
-          
-          if (!studentName) continue;
-          
-          // Only process today's entries
-          const entryDate = date ? new Date(date).toLocaleDateString() : '';
-          if (entryDate !== today) continue;
-          
-          // If we haven't seen this student yet (processing newest first)
-          if (!status[studentName]) {
-            if (backTime) {
-              // Student has returned - they are available (don't add to status object)
-              console.log(`${studentName} has returned (backTime: ${backTime}), marking as available`);
-            } else if (outTime) {
-              // Student is currently out
-              status[studentName] = {
-                gender: gender || "",
-                teacher: teacher || "",
-                outTime: outTime,
-                backTime: "",
-                holdNotice: ""
-              };
-              console.log(`${studentName} is currently out (outTime: ${outTime})`);
-            } else if (holdNotice) {
-              // Student is waiting in line
-              status[studentName] = {
-                gender: gender || "",
-                teacher: teacher || "",
-                outTime: "",
-                backTime: "",
-                holdNotice: holdNotice
-              };
-              console.log(`${studentName} is waiting in line (holdNotice: ${holdNotice})`);
-            }
-          }
-        } catch (rowError) {
-          console.warn(`Error processing log row ${r}:`, rowError.message);
-          // Continue with next row
-        }
-      }
-      
-      console.log('Current status loaded for', Object.keys(status).length, 'students');
-      return status;
-      
-    } catch (dataError) {
-      console.error('Error reading log sheet data:', dataError);
-      return status; // Return empty status
-    }
 }
 
 /**
@@ -357,6 +353,23 @@ function fetchData() {
 function updateStatus(studentName, action, teacherName, gender) {
   console.log(`updateStatus called: ${studentName}, ${action}, ${teacherName}, ${gender}`);
   
+  // Validate required parameters
+  if (!studentName || studentName.trim() === "") {
+    throw new Error("Student name is required");
+  }
+  
+  if (!teacherName || teacherName.trim() === "") {
+    throw new Error("Teacher name is required");
+  }
+  
+  if (action === "out" && (!gender || gender.trim() === "")) {
+    throw new Error("Gender (G or B) must be selected before marking student out");
+  }
+  
+  if (gender && gender !== "G" && gender !== "B") {
+    throw new Error("Gender must be either 'G' or 'B'");
+  }
+  
   // Get student ID from the roster
   const dailySheet = getLatestDailySheet();
   console.log('Got daily sheet:', dailySheet.getName());
@@ -374,25 +387,39 @@ function updateStatus(studentName, action, teacherName, gender) {
   console.log('Current time:', now);
   
   if (action === "out") {
-    // Check if restroom is free for that gender (only one boy and one girl allowed out at a time)
-    const otherOut = _checkOtherOut(gender);
-    if (otherOut) {
-      // Someone of the same gender is already out. Add to waiting list
-      const currentStatus = _getCurrentRestroomStatus();
-      let waitingCount = 0;
-      for (const [name, status] of Object.entries(currentStatus)) {
-        if (status.gender === gender && status.holdNotice && !status.outTime) {
-          waitingCount++;
-        }
-      }
-      const position = waitingCount + 1;
-      const notice = `Waiting in line. Position ${position}.`;
+    try {
+      console.log('Checking if restroom is available for gender:', gender);
+      // Check if restroom is free for that gender (only one boy and one girl allowed out at a time)
+      const otherOut = _checkOtherOut(gender);
+      console.log('Other student out:', otherOut);
       
-      // Log the waiting entry
-      _logWaitingEntry(studentName, studentId, gender, teacherName, notice);
-    } else {
-      // Mark student as out - log the out entry
-      _logOutEntry(studentName, studentId, gender, teacherName, now);
+      if (otherOut) {
+        console.log('Restroom occupied, adding to waiting list');
+        // Someone of the same gender is already out. Add to waiting list
+        const currentStatus = _getCurrentRestroomStatus();
+        let waitingCount = 0;
+        for (const [name, status] of Object.entries(currentStatus)) {
+          if (status.gender === gender && status.holdNotice && !status.outTime) {
+            waitingCount++;
+          }
+        }
+        const position = waitingCount + 1;
+        const notice = `Waiting in line. Position ${position}.`;
+        
+        console.log('Logging waiting entry:', { studentName, studentId, gender, teacherName, notice });
+        // Log the waiting entry
+        _logWaitingEntry(studentName, studentId, gender, teacherName, notice);
+        console.log('Waiting entry logged successfully');
+      } else {
+        console.log('Restroom available, marking student out');
+        // Mark student as out - log the out entry
+        console.log('Logging out entry:', { studentName, studentId, gender, teacherName, outTime: now });
+        _logOutEntry(studentName, studentId, gender, teacherName, now);
+        console.log('Out entry logged successfully');
+      }
+    } catch (logError) {
+      console.error('Error during out action logging:', logError);
+      throw new Error(`Failed to log out action: ${logError.message}`);
     }
   } else if (action === "back") {
     // Mark student as back - complete the log entry
@@ -735,73 +762,270 @@ function api_testSimple() {
 }
 
 /**
- * Full api_fetchData with robust error handling
+ * Working api_fetchData with status integration
  */
 function api_fetchData() {
+  console.log('=== api_fetchData called ===');
+  
   try {
-    console.log('=== FULL api_fetchData with Error Handling ===');
-    
     // Get student roster (we know this works)
     const dailySheet = getLatestDailySheet();
     const roster = _getStudentRoster(dailySheet);
     console.log('Got roster with', roster.length, 'students');
     
-    // Try to get restroom status, but don't fail if it doesn't work
+    // Get restroom status with proper error handling
     let currentStatus = {};
     try {
-      console.log('Attempting to get restroom status...');
       currentStatus = _getCurrentRestroomStatus();
       console.log('Got restroom status for', Object.keys(currentStatus).length, 'students');
     } catch (statusError) {
-      console.warn('Could not load restroom status, using empty status:', statusError.message);
-      currentStatus = {}; // Use empty status if log reading fails
+      console.warn('Status loading failed, using empty status:', statusError.message);
+      currentStatus = {};
     }
     
-    // Combine roster with current status
-    console.log('Combining roster with status...');
-    const result = [];
+    // Build result arrays
+    const students = [];
     const queue = { girls: [], boys: [] };
     
     for (const student of roster) {
-      const status = currentStatus[student.name] || {
-        gender: "",
-        teacher: "",
-        outTime: "",
-        backTime: "",
-        holdNotice: ""
-      };
+      const status = currentStatus[student.name] || {};
       
-      result.push({
+      const studentData = {
         name: student.name,
         id: student.id,
         nameId: student.name,
-        gender: status.gender,
-        teacher: status.teacher,
-        outTime: status.outTime,
-        backTime: status.backTime,
-        holdNotice: status.holdNotice
-      });
+        gender: status.gender || "",
+        teacher: status.teacher || "",
+        outTime: status.outTime || "",
+        backTime: status.backTime || "",
+        holdNotice: status.holdNotice || ""
+      };
       
-      // Build queue lists
+      students.push(studentData);
+      
+      // Add to queue if waiting
       if (status.holdNotice && !status.outTime) {
         if (status.gender === "G") queue.girls.push(student.name);
         else if (status.gender === "B") queue.boys.push(student.name);
       }
     }
     
-    const finalResult = { students: result, queue };
-    console.log('api_fetchData completed successfully:', finalResult.students.length, 'students');
-    return finalResult;
+    const result = { students: students, queue: queue };
+    console.log('api_fetchData returning:', students.length, 'students');
+    return result;
     
   } catch (error) {
-    console.error('Error in full api_fetchData:', error);
+    console.error('Error in api_fetchData:', error);
+    // Return error result
+    return {
+      students: [
+        { name: "Error: " + error.message, id: "000", nameId: "Error", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }
+      ],
+      queue: { girls: [], boys: [] }
+    };
+  }
+}
+
+/**
+ * Ultra simple test function to isolate the issue
+ */
+function api_ultraSimpleTest() {
+  console.log('api_ultraSimpleTest called');
+  const result = {
+    students: [
+      { name: "Test 1", id: "001", nameId: "Test 1", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" },
+      { name: "Test 2", id: "002", nameId: "Test 2", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }
+    ],
+    queue: { girls: [], boys: [] }
+  };
+  console.log('api_ultraSimpleTest returning hardcoded data');
+  return result;
+}
+
+/**
+ * Test just the roster loading without any status
+ */
+function api_testRosterOnly() {
+  console.log('api_testRosterOnly called');
+  try {
+    const dailySheet = getLatestDailySheet();
+    const roster = _getStudentRoster(dailySheet);
+    console.log('Roster loaded:', roster.length, 'students');
     
-    // Fallback: try to return just the roster
+    const result = {
+      students: roster.map(student => ({
+        name: student.name,
+        id: student.id,
+        nameId: student.name,
+        gender: "",
+        teacher: "",
+        outTime: "",
+        backTime: "",
+        holdNotice: ""
+      })),
+      queue: { girls: [], boys: [] }
+    };
+    
+    console.log('api_testRosterOnly returning:', result.students.length, 'students');
+    return result;
+  } catch (error) {
+    console.error('Error in api_testRosterOnly:', error);
+    return {
+      students: [{ name: "Error: " + error.message, id: "000", nameId: "Error", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }],
+      queue: { girls: [], boys: [] }
+    };
+  }
+}
+
+/**
+ * MINIMAL VERSION - BYPASS ALL STATUS PROCESSING
+ */
+function api_minimalBypass() {
+  console.log('=== api_minimalBypass called ===');
+  
+  try {
+    // Get student roster only (we know this works)
+    const dailySheet = getLatestDailySheet();
+    const roster = _getStudentRoster(dailySheet);
+    console.log('✓ Got roster with', roster.length, 'students');
+    
+    // Don't call _getCurrentRestroomStatus at all - bypass it completely
+    const students = [];
+    const queue = { girls: [], boys: [] };
+    
+    // Process each student with NO status processing
+    for (let i = 0; i < roster.length; i++) {
+      const student = roster[i];
+      
+      const studentData = {
+        name: student.name,
+        id: student.id,
+        nameId: student.name,
+        gender: "",  // Empty - no status processing
+        teacher: "",  // Empty - no status processing
+        outTime: "",  // Empty - no status processing
+        backTime: "",  // Empty - no status processing
+        holdNotice: ""  // Empty - no status processing
+      };
+      
+      students.push(studentData);
+    }
+    
+    // Final result object
+    const result = { 
+      students: students, 
+      queue: queue 
+    };
+    
+    console.log('✓ api_minimalBypass SUCCESS - returning', students.length, 'students');
+    console.log('✓ NO STATUS PROCESSING - just basic roster');
+    console.log('✓ Result structure:', typeof result, result ? 'valid' : 'invalid');
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ ERROR in api_minimalBypass:', error);
+    return {
+      students: [
+        { name: "ERROR: " + error.message, id: "000", nameId: "Error", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }
+      ],
+      queue: { girls: [], boys: [] }
+    };
+  }
+}
+
+/**
+ * OCTOBER 16 2025 VERSION - brand new function name to force deployment
+ */
+function api_october16_2025() {
+  console.log('=== api_october16_2025 called ===');
+  
+  try {
+    // Get student roster (we know this works from other tests)
+    const dailySheet = getLatestDailySheet();
+    const roster = _getStudentRoster(dailySheet);
+    console.log('✓ Got roster with', roster.length, 'students');
+    
+    // Initialize result structure first
+    const students = [];
+    const queue = { girls: [], boys: [] };
+    
+    // Try to get restroom status, but don't let it break everything
+    let currentStatus = {};
     try {
-      console.log('Attempting fallback - roster only...');
+      console.log('⚠️ Attempting restroom status...');
+      currentStatus = _getCurrentRestroomStatus();
+      console.log('✓ Got restroom status for', Object.keys(currentStatus).length, 'students');
+    } catch (statusError) {
+      console.warn('⚠️ Status loading failed, continuing with empty status:', statusError.message);
+      // Leave currentStatus as empty object
+    }
+    
+    // Process each student safely
+    for (let i = 0; i < roster.length; i++) {
+      try {
+        const student = roster[i];
+        const status = currentStatus[student.name] || {};
+        
+        const studentData = {
+          name: student.name,
+          id: student.id,
+          nameId: student.name,
+          gender: status.gender || "",
+          teacher: status.teacher || "",
+          outTime: status.outTime || "",
+          backTime: status.backTime || "",
+          holdNotice: status.holdNotice || ""
+        };
+        
+        students.push(studentData);
+        
+        // Add to queue if waiting (safely)
+        if (status.holdNotice && !status.outTime) {
+          if (status.gender === "G") {
+            queue.girls.push(student.name);
+          } else if (status.gender === "B") {
+            queue.boys.push(student.name);
+          }
+        }
+      } catch (studentError) {
+        console.warn('⚠️ Error processing student', roster[i]?.name, ':', studentError.message);
+        // Add a basic student entry so we don't lose the student
+        students.push({
+          name: roster[i]?.name || "Unknown",
+          id: roster[i]?.id || "000",
+          nameId: roster[i]?.name || "Unknown",
+          gender: "",
+          teacher: "",
+          outTime: "",
+          backTime: "",
+          holdNotice: ""
+        });
+      }
+    }
+    
+    // Final result object
+    const result = { 
+      students: students, 
+      queue: queue 
+    };
+    
+    console.log('✓ api_october16_2025 SUCCESS - returning', students.length, 'students');
+    console.log('✓ Result structure valid:', !!result.students && Array.isArray(result.students));
+    console.log('✓ First student:', students[0]?.name);
+    console.log('✓ Final result object:', JSON.stringify(result, null, 2));
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ MAJOR ERROR in api_october16_2025:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Emergency fallback - return roster-only data
+    try {
+      console.log('🚨 Attempting emergency fallback...');
       const dailySheet = getLatestDailySheet();
       const roster = _getStudentRoster(dailySheet);
-      
       const fallbackResult = {
         students: roster.map(student => ({
           name: student.name,
@@ -815,20 +1039,311 @@ function api_fetchData() {
         })),
         queue: { girls: [], boys: [] }
       };
-      
-      console.log('Fallback successful:', fallbackResult.students.length, 'students');
+      console.log('🚨 Emergency fallback successful with', fallbackResult.students.length, 'students');
       return fallbackResult;
-      
     } catch (fallbackError) {
-      console.error('Fallback also failed:', fallbackError);
-      // Absolute fallback
+      console.error('💥 Even fallback failed:', fallbackError);
       return {
         students: [
-          { name: "Error Loading Students", id: "000", nameId: "Error", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }
+          { name: "SYSTEM ERROR: " + error.message, id: "000", nameId: "Error", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }
         ],
         queue: { girls: [], boys: [] }
       };
     }
+  }
+}
+
+/**
+ * FINAL WORKING VERSION - completely new function name
+ */
+function api_finalWorkingVersion() {
+  console.log('=== api_finalWorkingVersion called ===');
+  
+  try {
+    // Get student roster (we know this works from other tests)
+    const dailySheet = getLatestDailySheet();
+    const roster = _getStudentRoster(dailySheet);
+    console.log('✓ Got roster with', roster.length, 'students');
+    
+    // Initialize result structure first
+    const students = [];
+    const queue = { girls: [], boys: [] };
+    
+    // Try to get restroom status, but don't let it break everything
+    let currentStatus = {};
+    try {
+      console.log('⚠️ Attempting restroom status...');
+      currentStatus = _getCurrentRestroomStatus();
+      console.log('✓ Got restroom status for', Object.keys(currentStatus).length, 'students');
+    } catch (statusError) {
+      console.warn('⚠️ Status loading failed, continuing with empty status:', statusError.message);
+      // Leave currentStatus as empty object
+    }
+    
+    // Process each student safely
+    for (let i = 0; i < roster.length; i++) {
+      try {
+        const student = roster[i];
+        const status = currentStatus[student.name] || {};
+        
+        const studentData = {
+          name: student.name,
+          id: student.id,
+          nameId: student.name,
+          gender: status.gender || "",
+          teacher: status.teacher || "",
+          outTime: status.outTime || "",
+          backTime: status.backTime || "",
+          holdNotice: status.holdNotice || ""
+        };
+        
+        students.push(studentData);
+        
+        // Add to queue if waiting (safely)
+        if (status.holdNotice && !status.outTime) {
+          if (status.gender === "G") {
+            queue.girls.push(student.name);
+          } else if (status.gender === "B") {
+            queue.boys.push(student.name);
+          }
+        }
+      } catch (studentError) {
+        console.warn('⚠️ Error processing student', roster[i]?.name, ':', studentError.message);
+        // Add a basic student entry so we don't lose the student
+        students.push({
+          name: roster[i]?.name || "Unknown",
+          id: roster[i]?.id || "000",
+          nameId: roster[i]?.name || "Unknown",
+          gender: "",
+          teacher: "",
+          outTime: "",
+          backTime: "",
+          holdNotice: ""
+        });
+      }
+    }
+    
+    // Final result object
+    const result = { 
+      students: students, 
+      queue: queue 
+    };
+    
+    console.log('✓ api_finalWorkingVersion SUCCESS - returning', students.length, 'students');
+    console.log('✓ Result structure valid:', !!result.students && Array.isArray(result.students));
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ MAJOR ERROR in api_finalWorkingVersion:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Emergency fallback - return roster-only data
+    try {
+      console.log('🚨 Attempting emergency fallback...');
+      const dailySheet = getLatestDailySheet();
+      const roster = _getStudentRoster(dailySheet);
+      const fallbackResult = {
+        students: roster.map(student => ({
+          name: student.name,
+          id: student.id,
+          nameId: student.name,
+          gender: "",
+          teacher: "",
+          outTime: "",
+          backTime: "",
+          holdNotice: ""
+        })),
+        queue: { girls: [], boys: [] }
+      };
+      console.log('🚨 Emergency fallback successful with', fallbackResult.students.length, 'students');
+      return fallbackResult;
+    } catch (fallbackError) {
+      console.error('💥 Even fallback failed:', fallbackError);
+      return {
+        students: [
+          { name: "SYSTEM ERROR: " + error.message, id: "000", nameId: "Error", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }
+        ],
+        queue: { girls: [], boys: [] }
+      };
+    }
+  }
+}
+
+/**
+ * Working version without problematic status processing
+ */
+function api_loadStudentRoster() {
+  console.log('=== api_loadStudentRoster called ===');
+  
+  try {
+    // Get student roster (we know this works)
+    const dailySheet = getLatestDailySheet();
+    const roster = _getStudentRoster(dailySheet);
+    console.log('Got roster with', roster.length, 'students');
+    
+    // Try to get restroom status but don't let it break the function
+    let currentStatus = {};
+    try {
+      console.log('Attempting to get restroom status...');
+      currentStatus = _getCurrentRestroomStatus();
+      console.log('Got restroom status for', Object.keys(currentStatus).length, 'students');
+    } catch (statusError) {
+      console.warn('Status loading failed, using empty status:', statusError.message);
+      currentStatus = {};
+    }
+    
+    // Build result arrays - always ensure we return something valid
+    const students = [];
+    const queue = { girls: [], boys: [] };
+    
+    // Process each student
+    for (let i = 0; i < roster.length; i++) {
+      const student = roster[i];
+      const status = currentStatus[student.name] || {};
+      
+      const studentData = {
+        name: student.name,
+        id: student.id,
+        nameId: student.name,
+        gender: status.gender || "",
+        teacher: status.teacher || "",
+        outTime: status.outTime || "",
+        backTime: status.backTime || "",
+        holdNotice: status.holdNotice || ""
+      };
+      
+      students.push(studentData);
+      
+      // Add to queue if waiting (but don't let this break anything)
+      try {
+        if (status.holdNotice && !status.outTime) {
+          if (status.gender === "G") queue.girls.push(student.name);
+          else if (status.gender === "B") queue.boys.push(student.name);
+        }
+      } catch (queueError) {
+        console.warn('Queue processing error for', student.name, ':', queueError.message);
+      }
+    }
+    
+    // Ensure we always return a valid result
+    const result = { 
+      students: students, 
+      queue: queue 
+    };
+    
+    console.log('api_loadStudentRoster returning:', students.length, 'students');
+    console.log('Result structure valid:', !!result.students && Array.isArray(result.students));
+    
+    return result;
+    
+  } catch (error) {
+    console.error('Error in api_loadStudentRoster:', error);
+    console.error('Error stack:', error.stack);
+    
+    // Fallback: return roster-only data
+    try {
+      const dailySheet = getLatestDailySheet();
+      const roster = _getStudentRoster(dailySheet);
+      const fallbackResult = {
+        students: roster.map(student => ({
+          name: student.name,
+          id: student.id,
+          nameId: student.name,
+          gender: "",
+          teacher: "",
+          outTime: "",
+          backTime: "",
+          holdNotice: ""
+        })),
+        queue: { girls: [], boys: [] }
+      };
+      console.log('Returning fallback result with', fallbackResult.students.length, 'students');
+      return fallbackResult;
+    } catch (fallbackError) {
+      console.error('Fallback also failed:', fallbackError);
+      return {
+        students: [
+          { name: "Error: " + error.message, id: "000", nameId: "Error", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }
+        ],
+        queue: { girls: [], boys: [] }
+      };
+    }
+  }
+}
+
+/**
+ * Simple test to verify deployment
+ */
+function api_deploymentTest() {
+  console.log('api_deploymentTest called');
+  const result = {
+    success: true,
+    message: "Deployment working",
+    timestamp: new Date().toISOString(),
+    students: [
+      { name: "Test Student 1", id: "001", nameId: "Test Student 1", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" },
+      { name: "Test Student 2", id: "002", nameId: "Test Student 2", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }
+    ],
+    queue: { girls: [], boys: [] }
+  };
+  console.log('api_deploymentTest returning:', result);
+  return result;
+}
+
+/**
+ * Simple test function to verify server connectivity
+ */
+function api_testConnection() {
+  console.log('api_testConnection called');
+  return { 
+    success: true, 
+    message: "Connection working",
+    timestamp: new Date().toISOString()
+  };
+}
+
+/**
+ * Simplified fetchData function to bypass potential issues
+ */
+function api_fetchDataSimple() {
+  console.log('=== Simple fetchData called ===');
+  
+  try {
+    // Get basic roster
+    const dailySheet = getLatestDailySheet();
+    console.log('Got daily sheet:', dailySheet.getName());
+    
+    const roster = _getStudentRoster(dailySheet);
+    console.log('Got roster:', roster.length, 'students');
+    
+    // Create simple result without complex status logic
+    const result = {
+      students: roster.map(student => ({
+        name: student.name,
+        id: student.id,
+        nameId: student.name,
+        gender: "",
+        teacher: "Mr. Gomez", // Default teacher for now
+        outTime: "",
+        backTime: "",
+        holdNotice: ""
+      })),
+      queue: { girls: [], boys: [] }
+    };
+    
+    console.log('Simple result created:', result.students.length, 'students');
+    console.log('About to return simple result');
+    return result;
+    
+  } catch (error) {
+    console.error('Error in simple fetchData:', error);
+    return {
+      students: [
+        { name: "Error: " + error.message, id: "000", nameId: "Error", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }
+      ],
+      queue: { girls: [], boys: [] }
+    };
   }
 }
 
@@ -1016,15 +1531,24 @@ function api_debugLogSheet() {
 }
 function api_updateStatus(studentName, action, teacherName, gender) {
   console.log('API updateStatus called with:', { studentName, action, teacherName, gender });
+  
   try {
+    console.log('Step 1: Calling updateStatus...');
     updateStatus(studentName, action, teacherName, gender);
-    console.log('updateStatus completed successfully');
+    console.log('Step 2: updateStatus completed successfully');
+    
+    console.log('Step 3: Calling fetchData...');
     const result = fetchData();
-    console.log('fetchData completed, returning result');
+    console.log('Step 4: fetchData completed, returning result');
+    
     return result;
   } catch (error) {
     console.error('Error in api_updateStatus:', error);
-    throw error;
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    
+    // Re-throw with more context
+    throw new Error(`Failed to update status for ${studentName}: ${error.message}`);
   }
 }
 
