@@ -49,6 +49,7 @@
     <div class="container" x-data="appData()" x-init="init()">
       <h5 x-text="dateString"></h5>
       <h6 x-text="'Period: ' + periodString"></h6>
+      <small x-text="nextPeriodString" style="color: #666; font-style: italic; display: block; margin-bottom: 10px;"></small>
       
       <!-- Auto-detected teacher info -->
       <div class="row" x-show="detectedTeacher">
@@ -56,7 +57,7 @@
           <div class="card-panel teal lighten-4" style="padding: 10px;">
             <span class="black-text">
               <i class="material-icons tiny" style="vertical-align: text-bottom;">person</i>
-              Auto-detected teacher: <strong x-text="detectedTeacher"></strong>
+              Hello, <strong x-text="detectedTeacher"></strong>
               <small x-show="userEmail">(logged in as: <span x-text="userEmail"></span>)</small>
             </span>
           </div>
@@ -174,6 +175,7 @@
         return {
           dateString: "",
           periodString: "",
+          nextPeriodString: "",
           teachers: [],
           detectedTeacher: "",
           userEmail: "",
@@ -182,6 +184,145 @@
 
           init() {
             this.loadUserInfo();
+            // Update period every minute
+            setInterval(() => {
+              const now = new Date();
+              this.periodString = this.getCurrentPeriod(now);
+              this.nextPeriodString = this.getNextPeriod(now);
+            }, 60000);
+          },
+
+          // Bell Schedule Configuration
+          // Unified NAMS Bell Schedule 2025-2026 (combining 4th & 5th periods)
+          getBellSchedule() {
+            return [
+              { period: '1st', start: '8:40', end: '9:26' },
+              { period: '2nd', start: '9:30', end: '10:16' },
+              { period: '3rd', start: '10:20', end: '11:06' },
+              { period: '4th & 5th', start: '11:10', end: '1:21' },
+              { period: '6th', start: '1:25', end: '2:11' },
+              { period: '7th', start: '2:15', end: '3:01' },
+              { period: '8th', start: '3:05', end: '3:55' }
+            ];
+          },
+
+          // Convert time string (e.g., "8:40", "1:21") to minutes since midnight
+          // Assumes times after 1:00 and before 8:00 are PM
+          timeToMinutes(timeStr) {
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            let adjustedHours = hours;
+            
+            // Convert to 24-hour format
+            // Times from 1:00 to 7:59 are assumed to be PM (afternoon/evening)
+            if (hours >= 1 && hours <= 7) {
+              adjustedHours = hours + 12;
+            }
+            
+            const result = adjustedHours * 60 + minutes;
+            console.log(`timeToMinutes("${timeStr}") = ${adjustedHours}*60 + ${minutes} = ${result} (original hours: ${hours})`);
+            return result;
+          },
+
+          // Get the current period based on time
+          getCurrentPeriod(now = new Date()) {
+            const currentTime = now.getHours() * 60 + now.getMinutes();
+            const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+            
+            // Debug logging
+            console.log('Current time debug:', {
+              fullDate: now.toString(),
+              hours: now.getHours(),
+              minutes: now.getMinutes(),
+              currentTimeInMinutes: currentTime,
+              dayOfWeek: dayOfWeek,
+              timeString: now.toLocaleTimeString()
+            });
+            
+            // School only operates Monday-Friday
+            if (dayOfWeek === 0 || dayOfWeek === 6) {
+              return 'Weekend - No School';
+            }
+
+            // Before school starts (8:40 = 520 minutes)
+            const schoolStartMinutes = this.timeToMinutes('8:40');
+            console.log('School start check:', currentTime, '<', schoolStartMinutes, '=', currentTime < schoolStartMinutes);
+            if (currentTime < schoolStartMinutes) {
+              return 'Before School';
+            }
+
+            // After school ends (3:55 = 955 minutes)
+            const schoolEndMinutes = this.timeToMinutes('3:55');
+            console.log('School end check:', currentTime, '>', schoolEndMinutes, '=', currentTime > schoolEndMinutes);
+            if (currentTime > schoolEndMinutes) {
+              return 'After School';
+            }
+
+            // Get the unified schedule
+            const periods = this.getBellSchedule();
+
+            // Check each period
+            for (const period of periods) {
+              const startTime = this.timeToMinutes(period.start);
+              const endTime = this.timeToMinutes(period.end);
+              
+              console.log(`Checking ${period.period}:`, currentTime, 'between', startTime, 'and', endTime);
+              
+              if (currentTime >= startTime && currentTime <= endTime) {
+                return `${period.period} (${period.start} - ${period.end})`;
+              }
+            }
+
+            // Check for passing periods (between classes)
+            for (let i = 0; i < periods.length - 1; i++) {
+              const currentPeriodEnd = this.timeToMinutes(periods[i].end);
+              const nextPeriodStart = this.timeToMinutes(periods[i + 1].start);
+              
+              if (currentTime > currentPeriodEnd && currentTime < nextPeriodStart) {
+                return `Passing Period (${periods[i].period} → ${periods[i + 1].period})`;
+              }
+            }
+
+            return `Current Time: ${now.toLocaleTimeString()} (${currentTime} minutes)`;
+          },
+
+          // Get information about the next period
+          getNextPeriod(now = new Date()) {
+            const currentTime = now.getHours() * 60 + now.getMinutes();
+            const dayOfWeek = now.getDay();
+            
+            // School only operates Monday-Friday
+            if (dayOfWeek === 0 || dayOfWeek === 6) {
+              return 'No upcoming periods - Weekend';
+            }
+
+            // After school ends
+            if (currentTime > this.timeToMinutes('3:55')) {
+              return 'No more periods today';
+            }
+
+            const periods = this.getBellSchedule();
+
+            // Find the next period that hasn't started yet
+            for (const period of periods) {
+              const startTime = this.timeToMinutes(period.start);
+              
+              if (currentTime < startTime) {
+                const minutesUntil = startTime - currentTime;
+                const hours = Math.floor(minutesUntil / 60);
+                const mins = minutesUntil % 60;
+                
+                let timeUntil = '';
+                if (hours > 0) {
+                  timeUntil = `${hours}h ${mins}m`;
+                } else {
+                  timeUntil = `${mins}m`;
+                }
+                
+                return `Next: ${period.period} in ${timeUntil} (${period.start} - ${period.end})`;
+              }
+            }
+
+            return 'No more periods today';
           },
 
           loadUserInfo() {
@@ -192,6 +333,17 @@
                 this.userEmail = userInfo.userEmail;
                 this.detectedTeacher = userInfo.detectedTeacher;
                 this.teachers = userInfo.teacherList;
+                
+                // Initialize date and period
+                const now = new Date();
+                this.dateString = now.toLocaleDateString('en-US', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                });
+                this.periodString = this.getCurrentPeriod(now);
+                this.nextPeriodString = this.getNextPeriod(now);
                 
                 // Now load the student data
                 this.refreshData();
@@ -210,6 +362,17 @@
                   "Other Teacher"
                 ];
                 this.detectedTeacher = "Other Teacher";
+                
+                // Initialize date and period
+                const now = new Date();
+                this.dateString = now.toLocaleDateString('en-US', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                });
+                this.periodString = this.getCurrentPeriod(now);
+                this.nextPeriodString = this.getNextPeriod(now);
                 
                 // Load student data even if user info fails
                 this.refreshData();
@@ -406,11 +569,16 @@
             });
             this.queue = resp.queue;
             console.log('Final students array:', this.students);
-            // Also set dateString and periodString
-            // For now, you can get them from resp or compute them
+            // Set dateString and periodString
             const now = new Date();
-            this.dateString = now.toLocaleDateString();
-            this.periodString = "1st Period (Emergency only)"; // you can override
+            this.dateString = now.toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            });
+            this.periodString = this.getCurrentPeriod(now);
+            this.nextPeriodString = this.getNextPeriod(now);
           },
 
           formatDate(dt) {
