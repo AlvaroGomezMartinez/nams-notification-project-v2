@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: Arial, sans-serif; padding:18px; color:#222; }
+      h2 { margin-top:0; }
+      button { padding:8px 12px; border-radius:4px; border:none; background:#292f61; color:#fff; }
+    </style>
+  </head>
+  <body>
+    <div style="font-size:13px; line-height:1.4;">
+      <h3>Using the Sidebar</h3>
+      <ol>
+        <li>Click inside the Student ID field for a list of currently enrolled students.</li>
+        <li>Select which restroom the student will be using, and the current class Period.</li>
+        <li>Optional: add notes to give context.</li>
+        <li>Click <strong>Out</strong> to log the student leaving.
+        <li>Click <strong>Back</strong> to mark them as returned.</li>
+        <li>If a student has already used the restroom once in the AM or once in the PM, the sidebar will show a notification and advise you to notify an administrator if it is an emergency.</li>
+      </ol>
+
+      <h3>Archiving Data (Move AM/PM logs to Database)</h3>
+      <ol>
+        <li>From the Google Sheets menu choose <em>Restroom Log &gt; Move current AM/PM logs to Database</em>. This action will:</li>
+        <ul>
+          <li>Copy all non-empty rows from the AM and PM sheets into the <code>Database</code> sheet.</li>
+          <li>If the <code>Database</code> sheet does not exist it will be created.</li>
+          <li>After copying, the AM and PM sheets will be cleared.</li>
+        </ul>
+        <li>Make sure you only archive when you are ready to permanently move that day's AM/PM log rows to the database.</li>
+      </ol>
+
+      <h3>Tips & Troubleshooting</h3>
+      <ul>
+        <li>Use the <strong>Log Students</strong> menu item in the <strong>🚽 Restroom Log</strong> menu to reopen the sidebar if it is closed.</li>
+        <li>If the script reports permissions errors, ensure you have authorized the Apps Script project to access the sheet and your email (first-time authorization required).</li>
+        <li>If the script is already authorized, and you still have issues, verify that your account has the necessary access rights. You can add teachers or update their information by going to <strong>Manage Teachers</strong> in the <strong>🚽 Restroom Log</strong> menu. To edit, click on the <strong>Edit</strong> button next to their name and scroll down to the bottom of the window to update the information then click <strong>Save Changes</strong>. To add a teacher, scroll down to the bottom of the <strong>Manage Teachers</strong> window and fill out the form, then click <strong>Add Teacher</strong>.</li>
+      </ul>
+    </div>
+    <div style="text-align:right; margin-top:12px;">
+      <button onclick="google.script.host.close()">Close</button>
+    </div>
+  </body>
+</html>
