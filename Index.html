@@ -8,6 +8,11 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css"
       rel="stylesheet"
     />
+    <!-- Import Material Icons -->
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
     <style>
       .highlight {
         background-color: #ffff99; /* light yellow highlight */
@@ -45,15 +50,20 @@
       <h5 x-text="dateString"></h5>
       <h6 x-text="'Period: ' + periodString"></h6>
       
-      <!-- Debug button - remove this after troubleshooting -->
-      <div class="row">
+      <!-- Auto-detected teacher info -->
+      <div class="row" x-show="detectedTeacher">
         <div class="col s12">
-          <button class="btn red" @click="debugSheet()">Debug Sheet Structure</button>
-          <button class="btn orange" @click="debugLogSheet()">Debug Log Entries</button>
-          <small style="margin-left: 10px;">Check browser console for output</small>
+          <div class="card-panel teal lighten-4" style="padding: 10px;">
+            <span class="black-text">
+              <i class="material-icons tiny" style="vertical-align: text-bottom;">person</i>
+              Auto-detected teacher: <strong x-text="detectedTeacher"></strong>
+              <small x-show="userEmail">(logged in as: <span x-text="userEmail"></span>)</small>
+            </span>
+          </div>
         </div>
       </div>
-      <br />
+      
+
 
       <!-- Main table -->
       <div class="table-container">
@@ -154,19 +164,48 @@
         return {
           dateString: "",
           periodString: "",
-          teachers: [
-            "Teacher A", "Teacher B", "Teacher C", "Teacher D", "Teacher E",
-            "Teacher F", "Teacher G", "Teacher H", "Teacher I", "Teacher J",
-            "Teacher K", "Teacher L", "Teacher M", "Teacher N", "Teacher O",
-            "Teacher P", "Teacher Q"
-          ],
+          teachers: [],
+          detectedTeacher: "",
+          userEmail: "",
           students: [],
           queue: { girls: [], boys: [] },
 
           init() {
-            this.refreshData();
-            // Poll every 30 seconds to keep data in sync:
-            setInterval(() => this.refreshData(), 30000);
+            this.loadUserInfo();
+          },
+
+          loadUserInfo() {
+            console.log('Loading user information...');
+            google.script.run
+              .withSuccessHandler((userInfo) => {
+                console.log('User info received:', userInfo);
+                this.userEmail = userInfo.userEmail;
+                this.detectedTeacher = userInfo.detectedTeacher;
+                this.teachers = userInfo.teacherList;
+                
+                // Now load the student data
+                this.refreshData();
+                // Poll every 30 seconds to keep data in sync:
+                setInterval(() => this.refreshData(), 30000);
+              })
+              .withFailureHandler((error) => {
+                console.error('Error loading user info:', error);
+                // Use fallback teacher list
+                this.teachers = [
+                  "Mr. Aguilar", "Mrs. Atoui", "Mrs. Bowery", "Mrs. Cantu", "Mr. Casanova",
+                  "Mrs. Coyle", "Mr. De Leon", "Mrs. Farias", "Mr. Franco", "Mr. Garcia",
+                  "Mr. Goff", "Mr. Gomez", "Dr. Gonzales", "Mr. Hernandez", "Mrs. Hutton",
+                  "Mrs. Idrogo", "Mrs. Jasso", "Mrs. Marquez", "Mr. Ollendieck", "Mr. Paez",
+                  "Mr. Ramon", "Mrs. Tellez", "Mr. Trevino", "Mrs. Wine", "Mrs. Yeager",
+                  "Other Teacher"
+                ];
+                this.detectedTeacher = "Other Teacher";
+                
+                // Load student data even if user info fails
+                this.refreshData();
+                setInterval(() => this.refreshData(), 30000);
+              })
+              .api_getCurrentUserInfo();
           },
 
           refreshData() {
@@ -174,24 +213,50 @@
             google.script.run
               .withSuccessHandler((resp) => {
                 console.log('Received data:', resp);
+                if (resp === null || resp === undefined) {
+                  console.error('Received null/undefined response from api_fetchData');
+                  alert('Error: Server returned empty response. This might be due to a server-side error. Check the Apps Script logs.');
+                  return;
+                }
+                
+                // Check if response indicates an error
+                if (resp.success === false || resp.error) {
+                  console.error('Server returned error response:', resp);
+                  alert(`Server Error: ${resp.error}\n\nCheck console for details.`);
+                  return;
+                }
+                
                 this.handleFetch(resp);
               })
               .withFailureHandler((error) => {
                 console.error('Error fetching data:', error);
                 // Show user-friendly error message
-                alert('Error loading student data. Please refresh the page or contact support.');
+                alert('Error loading student data. Please refresh the page or contact support.\n\nError details: ' + (error.message || error));
               })
               .api_fetchData();
           },
 
           handleFetch(resp) {
+            // Check if response is valid
+            if (!resp) {
+              console.error('Received null response from fetchData');
+              alert('Error: No data received from server. Please refresh the page.');
+              return;
+            }
+            
+            if (!resp.students || !Array.isArray(resp.students)) {
+              console.error('Invalid response structure:', resp);
+              alert('Error: Invalid data structure received from server. Please refresh the page.');
+              return;
+            }
+            
             // resp has { students, queue }
             console.log('Processing students:', resp.students);
             this.students = resp.students.map((s) => {
               const processedStudent = {
                 name: s.name,
                 gender: s.gender || "G",
-                teacher: s.teacher || this.teachers[0],
+                teacher: s.teacher || this.detectedTeacher || this.teachers[0] || "Other Teacher",
                 outTime: s.outTime ? this.formatDate(s.outTime) : "",
                 backTime: s.backTime ? this.formatDate(s.backTime) : "",
                 holdNotice: s.holdNotice || ""
@@ -278,6 +343,141 @@
                 console.error('Error debugging log sheet:', error);
               })
               .api_debugLogSheet();
+          },
+
+          // Debug function to test user detection
+          testUserDetection() {
+            console.log('Testing user detection...');
+            google.script.run
+              .withSuccessHandler((userInfo) => {
+                console.log('User detection test result:', userInfo);
+                alert(`User: ${userInfo.userEmail || 'Not detected'}\nTeacher: ${userInfo.detectedTeacher}\nCheck console for full details.`);
+              })
+              .withFailureHandler((error) => {
+                console.error('Error testing user detection:', error);
+                alert('Error testing user detection. Check console for details.');
+              })
+              .api_getCurrentUserInfo();
+          },
+
+          // Debug function to test fetchData
+          testFetchData() {
+            console.log('Testing fetchData...');
+            google.script.run
+              .withSuccessHandler((result) => {
+                console.log('FetchData test result:', result);
+                if (result.success) {
+                  alert(`FetchData SUCCESS:\nStudents: ${result.result && result.result.students ? result.result.students.length : 0}\nCheck console for full details.`);
+                } else {
+                  alert(`FetchData FAILED:\n${result.error}\nCheck console for stack trace.`);
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('Error testing fetchData:', error);
+                alert('Error testing fetchData. Check console for details.\n\n' + (error.message || error));
+              })
+              .api_testFetchData();
+          },
+
+          // Debug function to list all sheets
+          listSheets() {
+            console.log('Listing all sheets...');
+            google.script.run
+              .withSuccessHandler((result) => {
+                console.log('Sheet list result:', result);
+                if (result.success) {
+                  const sheetNames = result.sheets.map(s => s.name).join(', ');
+                  alert(`Available Sheets (${result.sheets.length}):\n${sheetNames}\n\nLooking for: ${result.todayString}\nCheck console for full details.`);
+                } else {
+                  alert(`List Sheets FAILED:\n${result.error}`);
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('Error listing sheets:', error);
+                alert('Error listing sheets. Check console for details.');
+              })
+              .api_listSheets();
+          },
+
+          // Debug function to inspect a specific sheet
+          inspectSheet() {
+            if (!this.inspectSheetName.trim()) {
+              alert('Please enter a sheet name to inspect');
+              return;
+            }
+            
+            console.log('Inspecting sheet:', this.inspectSheetName);
+            google.script.run
+              .withSuccessHandler((result) => {
+                console.log('Sheet inspection result:', result);
+                if (result.success) {
+                  alert(`Sheet: ${result.sheetName}\nRows: ${result.totalRows}\nColumns: ${result.totalColumns}\nCheck console for detailed content.`);
+                } else {
+                  alert(`Inspect Sheet FAILED:\n${result.error}`);
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('Error inspecting sheet:', error);
+                alert('Error inspecting sheet. Check console for details.');
+              })
+              .api_inspectSheet(this.inspectSheetName);
+          },
+
+          // Debug function to test basic spreadsheet access
+          testBasicAccess() {
+            console.log('Testing basic spreadsheet access...');
+            google.script.run
+              .withSuccessHandler((result) => {
+                console.log('Basic access test result:', result);
+                if (result.success) {
+                  alert(`Basic Access SUCCESS!\nSheets: ${result.sheetCount}\nSelected: ${result.selectedSheet}\nDimensions: ${result.sheetDimensions.rows}x${result.sheetDimensions.columns}\nCheck console for details.`);
+                } else {
+                  alert(`Basic Access FAILED:\n${result.error}`);
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('Error testing basic access:', error);
+                alert('Error testing basic access. Check console for details.');
+              })
+              .api_testBasicAccess();
+          },
+
+          // Debug function to test student roster reading
+          testStudentRoster() {
+            console.log('Testing student roster reading...');
+            google.script.run
+              .withSuccessHandler((result) => {
+                console.log('Student roster test result:', result);
+                if (result.success) {
+                  alert(`Student Roster SUCCESS!\nSheet: ${result.sheetName}\nStudents: ${result.studentCount}\nCheck console for student list.`);
+                } else {
+                  alert(`Student Roster FAILED:\n${result.error}`);
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('Error testing student roster:', error);
+                alert('Error testing student roster. Check console for details.');
+              })
+              .api_testStudentRoster();
+          },
+
+          // Debug function to test restroom status reading
+          testRestroomStatus() {
+            console.log('Testing restroom status reading...');
+            google.script.run
+              .withSuccessHandler((result) => {
+                console.log('Restroom status test result:', result);
+                if (result.success) {
+                  alert(`Restroom Status SUCCESS!\nStudents with status: ${result.statusCount}\nCheck console for details.`);
+                } else {
+                  alert(`Restroom Status FAILED:\n${result.error}`);
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('Error testing restroom status:', error);
+                alert('Error testing restroom status. Check console for details.');
+              })
+              .api_testRestroomStatus();
           },
 
           markOut(stu) {
