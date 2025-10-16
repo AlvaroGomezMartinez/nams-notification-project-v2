@@ -201,7 +201,7 @@ function _getCurrentRestroomStatus() {
     console.log('Looking for today\'s entries:', today);
     
     // Process log entries from most recent to oldest
-    // Log format: A=Date, B=Student Name, C=Student ID, D=Gender, E=Teacher, F=Out Time, G=Back Time, H=Hold Notice, I=Duration
+    // Log format: A=Date, B=Student Name, C=Student ID, D=Gender, E=Teacher, F=Out Time, G=Back Time, H=Hold Notice
     for (let r = data.length - 1; r >= 1; r--) {
       try {
         const row = data[r];
@@ -494,13 +494,121 @@ function _logWaitingEntry(studentName, studentId, gender, teacherName, holdNotic
   let logSheet = ss.getSheetByName("Log");
   if (!logSheet) {
     logSheet = ss.insertSheet("Log");
-    logSheet.appendRow(["Date", "Student Name", "Student ID", "Gender", "Teacher", "Out Time", "Back Time", "Hold Notice", "Duration (minutes)"]);
+    logSheet.appendRow(["Date", "Student Name", "Student ID", "Gender", "Teacher", "Out Time", "Back Time", "Hold Notice"]);
   }
   
   const date = new Date().toLocaleDateString();
-  // A: Date, B: Student Name, C: Student ID, D: Gender, E: Teacher, F: Out Time, G: Back Time, H: Hold Notice, I: Duration
-  const row = [date, studentName, studentId, gender, teacherName, "", "", holdNotice, ""];
+  // A: Date, B: Student Name, C: Student ID, D: Gender, E: Teacher, F: Out Time, G: Back Time, H: Hold Notice
+  const row = [date, studentName, studentId, gender, teacherName, "", "", holdNotice];
   logSheet.appendRow(row);
+}
+
+/**
+ * Format a Date object to "H:MM AM/PM" format (12-hour time)
+ * @param {Date} date - The date object to format
+ * @returns {string} Time in "H:MM AM/PM" format (e.g., "2:30 PM", "9:05 AM")
+ */
+function _formatTimeToHHMM(date) {
+  let hours = date.getHours();
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  
+  // Convert to 12-hour format
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 should be 12
+  
+  return `${hours}:${minutes} ${ampm}`;
+}
+
+/**
+ * Parse a time value (string or Date) back to a Date object
+ * @param {string|Date} timeValue - Time string like "2:30 PM" or Date object
+ * @param {Date} baseDate - The base date to use (defaults to today)
+ * @returns {Date} Date object with the parsed time
+ */
+function _parseTimeString(timeValue, baseDate = new Date()) {
+  console.log(`_parseTimeString called with: "${timeValue}" (type: ${typeof timeValue})`);
+  
+  if (!timeValue) {
+    throw new Error(`Time value is empty or null: ${timeValue}`);
+  }
+  
+  // If it's already a Date object, return it directly
+  if (timeValue instanceof Date) {
+    console.log(`Already a Date object: ${timeValue}`);
+    return timeValue;
+  }
+  
+  // If it looks like an ISO date string, parse it as a Date
+  if (typeof timeValue === 'string' && timeValue.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
+    console.log(`Detected ISO date string, parsing as Date`);
+    const dateObj = new Date(timeValue);
+    console.log(`Parsed ISO date: ${dateObj}`);
+    return dateObj;
+  }
+  
+  // Convert to string if not already
+  const timeString = timeValue.toString().trim();
+  console.log(`Converted to string: "${timeString}"`);
+  
+  // Handle various possible formats
+  let timeMatch;
+  
+  // Try "H:MM AM/PM" format (our expected format)
+  timeMatch = timeString.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (timeMatch) {
+    console.log(`Matched AM/PM format: hours=${timeMatch[1]}, minutes=${timeMatch[2]}, ampm=${timeMatch[3]}`);
+  } else {
+    // Try "HH:MM" format (24-hour)
+    timeMatch = timeString.match(/^(\d{1,2}):(\d{2})$/);
+    if (timeMatch) {
+      console.log(`Matched 24-hour format: hours=${timeMatch[1]}, minutes=${timeMatch[2]}`);
+      // Assume 24-hour format, add AM/PM
+      const hour = parseInt(timeMatch[1], 10);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      timeMatch[3] = ampm;
+      if (hour > 12) {
+        timeMatch[1] = (hour - 12).toString();
+      } else if (hour === 0) {
+        timeMatch[1] = '12';
+      }
+      console.log(`Converted to AM/PM: hours=${timeMatch[1]}, ampm=${timeMatch[3]}`);
+    }
+  }
+  
+  if (!timeMatch) {
+    throw new Error(`Time string doesn't match expected formats: "${timeString}". Expected "H:MM AM/PM", "HH:MM", or ISO date string`);
+  }
+  
+  let hours = parseInt(timeMatch[1], 10);
+  const minutes = parseInt(timeMatch[2], 10);
+  const ampm = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
+  
+  console.log(`Parsed values: hours=${hours}, minutes=${minutes}, ampm=${ampm}`);
+  
+  // Validate parsed values
+  if (isNaN(hours) || isNaN(minutes) || hours < 1 || hours > 12 || minutes < 0 || minutes > 59) {
+    throw new Error(`Invalid time components: hours=${hours}, minutes=${minutes}`);
+  }
+  
+  // Convert to 24-hour format if AM/PM is specified
+  if (ampm) {
+    if (ampm === 'AM' && hours === 12) {
+      hours = 0; // 12:XX AM is 0:XX in 24-hour format
+    } else if (ampm === 'PM' && hours !== 12) {
+      hours += 12; // 1:XX PM is 13:XX, etc.
+    }
+    // 12:XX PM stays as 12:XX
+  }
+  
+  console.log(`Final 24-hour format: hours=${hours}, minutes=${minutes}`);
+  
+  // Create a new Date object with the same date but the parsed time
+  const result = new Date(baseDate);
+  result.setHours(hours, minutes, 0, 0); // Set hours, minutes, seconds=0, milliseconds=0
+  
+  console.log(`Created Date object: ${result}`);
+  return result;
 }
 
 /** Log an out entry to the Log sheet */
@@ -509,14 +617,14 @@ function _logOutEntry(studentName, studentId, gender, teacherName, outTime) {
   let logSheet = ss.getSheetByName("Log");
   if (!logSheet) {
     logSheet = ss.insertSheet("Log");
-    logSheet.appendRow(["Date", "Student Name", "Student ID", "Gender", "Teacher", "Out Time", "Back Time", "Hold Notice", "Duration (minutes)"]);
+    logSheet.appendRow(["Date", "Student Name", "Student ID", "Gender", "Teacher", "Out Time", "Back Time", "Hold Notice"]);
   }
   
   const date = new Date().toLocaleDateString();
-  const outTimeFormatted = outTime.toLocaleTimeString();
+  const outTimeFormatted = _formatTimeToHHMM(outTime);
   
-  // A: Date, B: Student Name, C: Student ID, D: Gender, E: Teacher, F: Out Time, G: Back Time, H: Hold Notice, I: Duration
-  const row = [date, studentName, studentId, gender, teacherName, outTimeFormatted, "", "", ""];
+  // A: Date, B: Student Name, C: Student ID, D: Gender, E: Teacher, F: Out Time, G: Back Time, H: Hold Notice
+  const row = [date, studentName, studentId, gender, teacherName, outTimeFormatted, "", ""];
   logSheet.appendRow(row);
 }
 
@@ -527,7 +635,7 @@ function _logBackEntry(studentName, studentId, gender, teacherName, backTime) {
   if (!logSheet) return;
   
   const date = new Date().toLocaleDateString();
-  const backTimeFormatted = backTime.toLocaleTimeString();
+  const backTimeFormatted = _formatTimeToHHMM(backTime);
   
   // Find the most recent "out" entry for this student today and update it
   const data = logSheet.getDataRange().getValues();
@@ -540,18 +648,14 @@ function _logBackEntry(studentName, studentId, gender, teacherName, backTime) {
     const entryBackTime = row[6];
     
     if (entryDate === date && entryName === studentName && entryOutTime && !entryBackTime) {
-      // Found the out entry - update it with back time and duration
-      const outTime = new Date(`${date} ${entryOutTime}`);
-      const duration = Math.round((backTime.getTime() - outTime.getTime()) / (1000 * 60));
-      
+      // Found the out entry - update it with back time
       logSheet.getRange(r + 1, 7).setValue(backTimeFormatted); // Back Time (column G)
-      logSheet.getRange(r + 1, 9).setValue(duration); // Duration (column I)
       return;
     }
   }
   
   // If no out entry found, create a new complete entry
-  const row = [date, studentName, studentId, gender, teacherName, "", backTimeFormatted, "", ""];
+  const row = [date, studentName, studentId, gender, teacherName, "", backTimeFormatted, ""];
   logSheet.appendRow(row);
 }
 
@@ -1582,4 +1686,435 @@ function api_appendToLog(studentObj) {
   const row = [ts, studentObj.name || "", studentObj.id || "", studentObj.gender || "", studentObj.teacher || ""];
   logSheet.appendRow(row);
   return { success: true };
+}
+
+/**
+ * Check if there are updates available since the last timestamp
+ * This helps reduce unnecessary full data refreshes
+ */
+function api_hasUpdatesAvailable(lastCheckTimestamp) {
+  console.log('=== api_hasUpdatesAvailable called ===');
+  console.log('Last check timestamp:', lastCheckTimestamp);
+  
+  try {
+    // Get the last modification time of the Log sheet
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      console.log('No Log sheet found, assuming no updates');
+      return { hasUpdates: false, timestamp: Date.now() };
+    }
+    
+    // Check the last row's timestamp or sheet modification
+    const data = logSheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      console.log('No data in Log sheet, no updates');
+      return { hasUpdates: false, timestamp: Date.now() };
+    }
+    
+    // Get the most recent entry date
+    const today = new Date().toLocaleDateString();
+    let latestEntryTime = 0;
+    
+    for (let i = data.length - 1; i >= 1; i--) {
+      const row = data[i];
+      const entryDate = row[0] ? new Date(row[0]).toLocaleDateString() : '';
+      
+      if (entryDate === today) {
+        // Found today's entry, check when it was likely created
+        // Since we don't store creation timestamps, we'll use a simple heuristic
+        const outTime = row[5]; // Out Time column
+        const backTime = row[6]; // Back Time column
+        
+        if (outTime || backTime) {
+          // Estimate entry time based on the most recent time field
+          const timeToCheck = backTime || outTime;
+          try {
+            let entryDateTime;
+            if (timeToCheck instanceof Date) {
+              entryDateTime = timeToCheck.getTime();
+            } else if (typeof timeToCheck === 'string') {
+              // Try to parse the time string with today's date
+              const timeMatch = timeToCheck.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+              if (timeMatch) {
+                const tempDate = new Date();
+                let hours = parseInt(timeMatch[1]);
+                const minutes = parseInt(timeMatch[2]);
+                const ampm = timeMatch[3].toUpperCase();
+                
+                if (ampm === 'AM' && hours === 12) hours = 0;
+                else if (ampm === 'PM' && hours !== 12) hours += 12;
+                
+                tempDate.setHours(hours, minutes, 0, 0);
+                entryDateTime = tempDate.getTime();
+              }
+            }
+            
+            if (entryDateTime && entryDateTime > latestEntryTime) {
+              latestEntryTime = entryDateTime;
+            }
+          } catch (timeError) {
+            console.warn('Error parsing entry time:', timeError);
+          }
+        }
+        break; // Only check the most recent today's entry
+      }
+    }
+    
+    const currentTime = Date.now();
+    const hasUpdates = latestEntryTime > lastCheckTimestamp;
+    
+    console.log(`Update check result: hasUpdates=${hasUpdates}, latestEntryTime=${latestEntryTime}, lastCheckTimestamp=${lastCheckTimestamp}`);
+    
+    return {
+      hasUpdates: hasUpdates,
+      timestamp: currentTime,
+      latestEntryTime: latestEntryTime
+    };
+    
+  } catch (error) {
+    console.error('Error checking for updates:', error);
+    // On error, assume there might be updates to be safe
+    return {
+      hasUpdates: true,
+      timestamp: Date.now(),
+      error: error.message
+    };
+  }
+}
+
+/**
+ * TRUE SCRIPT PROPERTIES IMPLEMENTATION
+ * 1. Loads student roster from daily sheet into Script Properties
+ * 2. Merges today's log data into the same Script Properties
+ * 3. Returns combined data from Script Properties
+ */
+function api_loadWithScriptProperties() {
+  console.log('=== api_loadWithScriptProperties called ===');
+  
+  try {
+    const scriptProperties = PropertiesService.getScriptProperties();
+    
+    // Step 1: Load roster data from daily sheet into Script Properties
+    console.log('Step 1: Loading roster into Script Properties...');
+    const dailySheet = getLatestDailySheet();
+    const roster = _getStudentRoster(dailySheet);
+    console.log(`Loaded ${roster.length} students from daily sheet`);
+    
+    // Initialize Script Properties with roster data
+    const today = new Date().toLocaleDateString();
+    const baseKey = `students_${today.replace(/\//g, '_')}`;
+    
+    // Clear existing data for today
+    console.log('Clearing existing Script Properties for today...');
+    const existingKeys = scriptProperties.getKeys();
+    existingKeys.forEach(key => {
+      if (key.startsWith(baseKey)) {
+        scriptProperties.deleteProperty(key);
+      }
+    });
+    
+    // Store roster data in Script Properties
+    console.log('Storing roster data in Script Properties...');
+    roster.forEach((student, index) => {
+      const studentData = {
+        name: student.name,
+        id: student.id,
+        nameId: student.name,
+        gender: "",
+        teacher: "",
+        outTime: "",
+        backTime: "",
+        holdNotice: ""
+      };
+      
+      scriptProperties.setProperty(`${baseKey}_${index}`, JSON.stringify(studentData));
+    });
+    
+    // Step 2: Load today's log data and merge into Script Properties
+    console.log('Step 2: Merging log data into Script Properties...');
+    const logData = api_debugLogSheet();
+    const todaysEntries = logData.todaysEntries || [];
+    console.log(`Found ${todaysEntries.length} log entries for today`);
+    
+    // Update Script Properties with log data
+    todaysEntries.forEach(logEntry => {
+      // Find the corresponding student in Script Properties
+      for (let i = 0; i < roster.length; i++) {
+        const key = `${baseKey}_${i}`;
+        const studentDataStr = scriptProperties.getProperty(key);
+        
+        if (studentDataStr) {
+          const studentData = JSON.parse(studentDataStr);
+          
+          if (studentData.name === logEntry.studentName) {
+            // Update with log data
+            studentData.gender = logEntry.gender || studentData.gender;
+            studentData.teacher = logEntry.teacher || studentData.teacher;
+            studentData.outTime = logEntry.outTime || studentData.outTime;
+            studentData.backTime = logEntry.backTime || studentData.backTime;
+            studentData.holdNotice = logEntry.holdNotice || studentData.holdNotice;
+            
+            // Save back to Script Properties
+            scriptProperties.setProperty(key, JSON.stringify(studentData));
+            console.log(`Updated Script Properties for ${studentData.name}`);
+            break;
+          }
+        }
+      }
+    });
+    
+    // Step 3: Read combined data from Script Properties and return
+    console.log('Step 3: Reading combined data from Script Properties...');
+    const combinedStudents = [];
+    const queue = { girls: [], boys: [] };
+    
+    for (let i = 0; i < roster.length; i++) {
+      const key = `${baseKey}_${i}`;
+      const studentDataStr = scriptProperties.getProperty(key);
+      
+      if (studentDataStr) {
+        const studentData = JSON.parse(studentDataStr);
+        combinedStudents.push(studentData);
+        
+        // Add to queue if waiting (has hold notice but no out time)
+        if (studentData.holdNotice && !studentData.outTime) {
+          if (studentData.gender === "G") {
+            queue.girls.push(studentData.name);
+          } else if (studentData.gender === "B") {
+            queue.boys.push(studentData.name);
+          }
+        }
+      }
+    }
+    
+    const result = {
+      students: combinedStudents,
+      queue: queue
+    };
+    
+    console.log(`✓ api_loadWithScriptProperties SUCCESS - returning ${combinedStudents.length} students`);
+    console.log(`✓ Script Properties keys created: ${roster.length}`);
+    console.log(`✓ Students with log data: ${combinedStudents.filter(s => s.outTime || s.backTime || s.holdNotice).length}`);
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ ERROR in api_loadWithScriptProperties:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Return null to trigger fallback
+    return null;
+  }
+}
+
+/**
+ * OLD COMBINED DATA FUNCTION - kept for reference but not using Script Properties properly
+ */
+function api_loadCombinedStudentData() {
+  console.log('=== api_loadCombinedStudentData called ===');
+  
+  try {
+    // Step 1: Load roster data from daily sheet
+    console.log('Step 1: Loading roster from daily sheet...');
+    const dailySheet = getLatestDailySheet();
+    const roster = _getStudentRoster(dailySheet);
+    console.log(`Loaded ${roster.length} students from daily sheet`);
+    
+    // Step 2: Load today's log data
+    console.log('Step 2: Loading today\'s log data...');
+    const logData = api_debugLogSheet();
+    const todaysEntries = logData.todaysEntries || [];
+    console.log(`Found ${todaysEntries.length} log entries for today (${logData.today})`);
+    
+    // Step 3: Create combined student data in script properties format
+    console.log('Step 3: Combining roster and log data...');
+    const combinedStudents = roster.map(student => {
+      // Find the most recent log entry for this student today
+      const studentLogs = todaysEntries.filter(log => log.studentName === student.name);
+      
+      if (studentLogs.length > 0) {
+        // Get the most recent entry
+        const latestLog = studentLogs[studentLogs.length - 1];
+        console.log(`Merging log data for ${student.name}:`, latestLog);
+        
+        return {
+          name: student.name,
+          id: student.id,
+          nameId: student.name,
+          gender: latestLog.gender || "",
+          teacher: latestLog.teacher || "",
+          outTime: latestLog.outTime || "",
+          backTime: latestLog.backTime || "",
+          holdNotice: latestLog.holdNotice || ""
+        };
+      } else {
+        // No log entry for this student today
+        return {
+          name: student.name,
+          id: student.id,
+          nameId: student.name,
+          gender: "",
+          teacher: "",
+          outTime: "",
+          backTime: "",
+          holdNotice: ""
+        };
+      }
+    });
+    
+    // Step 4: Build queue from combined data
+    console.log('Step 4: Building queue from combined data...');
+    const queue = { girls: [], boys: [] };
+    
+    combinedStudents.forEach(student => {
+      // Add to queue if waiting (has hold notice but no out time)
+      if (student.holdNotice && !student.outTime) {
+        if (student.gender === "G") {
+          queue.girls.push(student.name);
+        } else if (student.gender === "B") {
+          queue.boys.push(student.name);
+        }
+      }
+    });
+    
+    const result = {
+      students: combinedStudents,
+      queue: queue
+    };
+    
+    console.log(`✓ api_loadCombinedStudentData SUCCESS - returning ${combinedStudents.length} students`);
+    console.log(`✓ Queue: Girls: ${queue.girls.length}, Boys: ${queue.boys.length}`);
+    console.log(`✓ Students with data: ${combinedStudents.filter(s => s.outTime || s.backTime || s.holdNotice).length}`);
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ ERROR in api_loadCombinedStudentData:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Emergency fallback - return roster-only data
+    try {
+      console.log('🚨 Attempting emergency fallback...');
+      const dailySheet = getLatestDailySheet();
+      const roster = _getStudentRoster(dailySheet);
+      const fallbackResult = {
+        students: roster.map(student => ({
+          name: student.name,
+          id: student.id,
+          nameId: student.name,
+          gender: "",
+          teacher: "",
+          outTime: "",
+          backTime: "",
+          holdNotice: ""
+        })),
+        queue: { girls: [], boys: [] }
+      };
+      console.log('🚨 Emergency fallback successful with', fallbackResult.students.length, 'students');
+      return fallbackResult;
+    } catch (fallbackError) {
+      console.error('💥 Even fallback failed:', fallbackError);
+      return {
+        students: [
+          { name: "SYSTEM ERROR: " + error.message, id: "000", nameId: "Error", gender: "", teacher: "", outTime: "", backTime: "", holdNotice: "" }
+        ],
+        queue: { girls: [], boys: [] }
+      };
+    }
+  }
+}
+
+/**
+ * Optimized data loading function that avoids Script Properties entirely.
+ * This should be significantly faster than api_loadWithScriptProperties.
+ * Use this as an alternative when Script Properties isn't required for persistence.
+ */
+function api_loadFastCombinedData() {
+  console.log('=== api_loadFastCombinedData called ===');
+  const startTime = Date.now();
+  
+  try {
+    // Step 1: Load roster data from daily sheet
+    console.log('Step 1: Loading roster from daily sheet...');
+    const dailySheet = getLatestDailySheet();
+    const roster = _getStudentRoster(dailySheet);
+    console.log(`Loaded ${roster.length} students from daily sheet`);
+    
+    // Step 2: Load today's log data
+    console.log('Step 2: Loading today\'s log data...');
+    const logData = api_debugLogSheet();
+    const todaysEntries = logData.todaysEntries || [];
+    console.log(`Found ${todaysEntries.length} log entries for today`);
+    
+    // Step 3: Create lookup map for O(1) log data access
+    console.log('Step 3: Creating log data lookup map...');
+    const logLookup = new Map();
+    todaysEntries.forEach(logEntry => {
+      // Use latest entry if multiple entries exist for same student
+      logLookup.set(logEntry.studentName, logEntry);
+    });
+    
+    // Step 4: Process all students in memory (no Script Properties I/O)
+    console.log('Step 4: Processing students in memory...');
+    const combinedStudents = [];
+    const queue = { girls: [], boys: [] };
+    
+    roster.forEach(student => {
+      const studentData = {
+        name: student.name,
+        id: student.id,
+        nameId: student.name,
+        gender: "",
+        teacher: "",
+        outTime: "",
+        backTime: "",
+        holdNotice: ""
+      };
+      
+      // Merge log data if exists (O(1) lookup)
+      const logEntry = logLookup.get(student.name);
+      if (logEntry) {
+        studentData.gender = logEntry.gender || "";
+        studentData.teacher = logEntry.teacher || "";
+        studentData.outTime = logEntry.outTime || "";
+        studentData.backTime = logEntry.backTime || "";
+        studentData.holdNotice = logEntry.holdNotice || "";
+      }
+      
+      combinedStudents.push(studentData);
+      
+      // Add to queue if waiting (has hold notice but no out time)
+      if (studentData.holdNotice && !studentData.outTime) {
+        if (studentData.gender === "G") {
+          queue.girls.push(studentData.name);
+        } else if (studentData.gender === "B") {
+          queue.boys.push(studentData.name);
+        }
+      }
+    });
+    
+    const result = {
+      students: combinedStudents,
+      queue: queue
+    };
+    
+    const endTime = Date.now();
+    const executionTime = (endTime - startTime) / 1000;
+    
+    console.log(`✓ api_loadFastCombinedData SUCCESS - ${executionTime}s execution time`);
+    console.log(`✓ Returning ${combinedStudents.length} students`);
+    console.log(`✓ Students with log data: ${combinedStudents.filter(s => s.outTime || s.backTime || s.holdNotice).length}`);
+    console.log(`✓ Queue: Girls: ${queue.girls.length}, Boys: ${queue.boys.length}`);
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ ERROR in api_loadFastCombinedData:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Return null to trigger fallback
+    return null;
+  }
 }

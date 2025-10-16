@@ -34,6 +34,10 @@
         background-color: #43a047; /* green */
         color: white;
       }
+      .back-btn.active {
+        background-color: #d32f2f !important; /* red when student is out and needs to come back */
+        color: white !important;
+      }
       .back-btn.disabled {
         background-color: #9e9e9e !important; /* grey when disabled */
         color: #ffffff !important;
@@ -42,6 +46,17 @@
       }
       .table-container {
         overflow-x: auto;
+      }
+      
+      /* Loading state styles */
+      .loading-blur {
+        filter: blur(1px);
+        opacity: 0.5;
+        pointer-events: none;
+      }
+      
+      .loading-overlay {
+        border-radius: 4px;
       }
     </style>
   </head>
@@ -75,9 +90,35 @@
         </div>
       </div>
 
-      <!-- Main table -->
-      <div class="table-container">
-        <table class="striped">
+      <!-- Main table with loading overlay -->
+      <div class="table-container" style="position: relative;">
+        
+        <!-- Loading Spinner Overlay -->
+        <div x-show="isLoading" 
+             class="loading-overlay" 
+             style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
+                    background: rgba(255,255,255,0.8); display: flex; 
+                    align-items: center; justify-content: center; 
+                    flex-direction: column; z-index: 10; min-height: 200px;">
+          <div class="preloader-wrapper small active">
+            <div class="spinner-layer spinner-green-only">
+              <div class="circle-clipper left">
+                <div class="circle"></div>
+              </div>
+              <div class="gap-patch">
+                <div class="circle"></div>
+              </div>
+              <div class="circle-clipper right">
+                <div class="circle"></div>
+              </div>
+            </div>
+          </div>
+          <p style="margin-top: 15px; color: #666; font-weight: 500;">
+            <span x-text="loadingMessage || 'Loading student data...'"></span>
+          </p>
+        </div>
+
+        <table class="striped" :class="{ 'loading-blur': isLoading }">
           <thead>
             <tr>
               <th>Student Name</th>
@@ -119,12 +160,15 @@
                   </button>
                 </td>
                 <td>
-                  <span x-text="stu.outTime || stu.holdNotice"></span>
+                  <span x-text="formatTime(stu.outTime || stu.holdNotice)"></span>
                 </td>
                 <td>
                   <button
                     class="btn back-btn"
-                    :class="{ 'disabled': !stu.outTime || stu.backTime }"
+                    :class="{ 
+                      'disabled': !stu.outTime || stu.backTime,
+                      'active': stu.outTime && !stu.backTime
+                    }"
                     @click="markBack(stu)"
                     :title="'Back disabled: ' + (!stu.outTime || stu.backTime ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | backTime: ' + stu.backTime"
                   >
@@ -132,7 +176,7 @@
                   </button>
                 </td>
                 <td>
-                  <span x-text="stu.backTime"></span>
+                  <span x-text="formatTime(stu.backTime)"></span>
                 </td>
               </tr>
             </template>
@@ -182,6 +226,11 @@
           userEmail: "",
           students: [],
           queue: { girls: [], boys: [] },
+          isLoading: false,
+          loadingMessage: "",
+          lastActionTime: 0,
+          lastUpdateTimestamp: 0,
+          refreshInterval: null,
 
           init() {
             this.loadUserInfo();
@@ -348,8 +397,8 @@
                 
                 // Now load the student data
                 this.refreshData();
-                // Poll every 30 seconds to keep data in sync:
-                setInterval(() => this.refreshData(), 30000);
+                // Start smart refresh system instead of constant polling
+                this.startSmartRefresh();
               })
               .withFailureHandler((error) => {
                 console.error('Error loading user info:', error);
@@ -377,7 +426,7 @@
                 
                 // Load student data even if user info fails
                 this.refreshData();
-                setInterval(() => this.refreshData(), 30000);
+                this.startSmartRefresh();
               })
               .api_getCurrentUserInfo();
           },
@@ -494,56 +543,171 @@
           },
 
           refreshData() {
-            console.log('refreshData() called');
+            console.log('refreshData() called - trying Script Properties implementation');
+            this.isLoading = true;
+            this.loadingMessage = "Loading student data...";
             
-            try {
-              console.log('Calling api_minimalBypass...');
-              google.script.run
-                .withSuccessHandler((result) => {
-                  console.log('Response received:', result);
-                  
-                  if (result && result.students) {
-                    console.log('Processing', result.students.length, 'students in refreshData');
-                    console.log('Detected teacher for assignment:', this.detectedTeacher);
-                    
-                    this.students = result.students.map((s) => {
-                      // Since student data from daily sheet doesn't include teacher,
-                      // assign all students to the currently logged-in teacher
-                      const assignedTeacher = this.detectedTeacher || this.teachers[0] || "Other Teacher";
-                      
-                      const processedStudent = {
-                        name: s.name,
-                        gender: s.gender || "",
-                        teacher: s.teacher || assignedTeacher,
-                        outTime: s.outTime ? this.formatDate(s.outTime) : "",
-                        backTime: s.backTime ? this.formatDate(s.backTime) : "",
-                        holdNotice: s.holdNotice || ""
-                      };
-                      
-                      // Ensure teacher is always set to detected teacher if not already assigned
-                      if (!processedStudent.teacher || processedStudent.teacher.trim() === "" || processedStudent.teacher === "Select Teacher") {
-                        processedStudent.teacher = assignedTeacher;
-                        console.log(`Assigned teacher "${assignedTeacher}" to student "${s.name}" in refreshData`);
-                      }
-                      
-                      return processedStudent;
-                    });
-                    this.queue = result.queue || { girls: [], boys: [] };
-                  } else {
-                    console.error('Invalid response structure:', result);
-                    alert('Invalid data received from server');
-                  }
-                })
-                .withFailureHandler((error) => {
-                  console.error('Error in refreshData:', error);
-                  alert('Failed to load student data: ' + error.message);
-                })
-                .api_minimalBypass();
+            // First try the new Script Properties function
+            google.script.run
+              .withSuccessHandler(data => {
+                console.log('✓ Script Properties data loaded successfully:', data);
+                if (data && data.students) {
+                  this.students = data.students;
+                  this.queue = data.queue || { girls: [], boys: [] };
+                  this.isLoading = false;
+                  this.loadingMessage = "";
+                  this.lastUpdateTimestamp = Date.now(); // Record successful refresh
+                  console.log('✓ Script Properties data applied successfully');
+                } else {
+                  console.warn('Script Properties returned null, falling back...');
+                  this.loadingMessage = "Trying fallback method...";
+                  this.fallbackToMinimalBypass();
+                }
+              })
+              .withFailureHandler(error => {
+                console.error('Script Properties failed:', error);
+                this.loadingMessage = "Trying fallback method...";
+                this.fallbackToMinimalBypass();
+              })
+              .api_loadWithScriptProperties();
+          },
+
+          // Smart refresh system - only refresh when there are actual changes
+          startSmartRefresh() {
+            console.log('Starting smart refresh system...');
+            // Check for updates every 60 seconds instead of constant refreshing
+            // This reduces server load while keeping data reasonably fresh
+            this.refreshInterval = setInterval(() => {
+              // Only refresh if no recent user activity
+              const timeSinceLastAction = Date.now() - (this.lastActionTime || 0);
+              if (timeSinceLastAction > 45000) { // 45 seconds since last action
+                console.log('Smart refresh: Checking for updates...');
+                this.checkForUpdates();
+              } else {
+                console.log('Smart refresh: Skipping check due to recent activity');
+              }
+            }, 60000); // Check every 60 seconds
+          },
+
+          // Check if there are any updates without doing a full refresh
+          checkForUpdates() {
+            google.script.run
+              .withSuccessHandler((updateInfo) => {
+                console.log('Update check response:', updateInfo);
+                if (updateInfo && updateInfo.hasUpdates) {
+                  console.log('Updates detected, refreshing data...');
+                  this.lastUpdateTimestamp = updateInfo.timestamp || Date.now();
+                  this.refreshData();
+                } else {
+                  console.log('No updates detected, keeping current data');
+                  // Update timestamp even if no changes to avoid redundant checks
+                  this.lastUpdateTimestamp = updateInfo?.timestamp || Date.now();
+                }
+              })
+              .withFailureHandler((error) => {
+                console.warn('Update check failed:', error);
+                // Fallback to regular refresh on error, but less frequently
+                if (Date.now() - (this.lastUpdateTimestamp || 0) > 300000) { // 5 minutes
+                  console.log('Fallback refresh due to failed update check');
+                  this.refreshData();
+                }
+              })
+              .api_hasUpdatesAvailable(this.lastUpdateTimestamp || 0);
+          },
+
+          // Track user actions to avoid unnecessary refreshes
+          recordUserAction() {
+            this.lastActionTime = Date.now();
+            console.log('User action recorded');
+          },
+
+          fallbackToMinimalBypass() {
+            console.log('Using fallback: api_minimalBypass + log data merge');
+            
+            google.script.run
+              .withSuccessHandler((result) => {
+                console.log('Fallback roster received:', result);
                 
-            } catch (error) {
-              console.error('Error in refreshData:', error);
-              alert('Failed to load student data: ' + error.message);
-            }
+                if (result && result.students) {
+                  // Process basic roster first
+                  this.students = result.students.map((s) => {
+                    const assignedTeacher = this.detectedTeacher || this.teachers[0] || "Other Teacher";
+                    
+                    return {
+                      name: s.name,
+                      gender: s.gender || "",
+                      teacher: s.teacher || assignedTeacher,
+                      outTime: s.outTime ? this.formatDate(s.outTime) : "",
+                      backTime: s.backTime ? this.formatDate(s.backTime) : "",
+                      holdNotice: s.holdNotice || ""
+                    };
+                  });
+                  
+                  this.queue = result.queue || { girls: [], boys: [] };
+                  
+                  // Now try to merge log data
+                  this.mergeLogDataFallback();
+                  
+                } else {
+                  console.error('Even fallback failed:', result);
+                  alert('Unable to load student data. Please refresh the page.');
+                }
+              })
+              .withFailureHandler((error) => {
+                console.error('Fallback also failed:', error);
+                alert('Critical error loading data: ' + error.message);
+              })
+              .api_minimalBypass();
+          },
+
+          mergeLogDataFallback() {
+            console.log('Attempting to merge log data in fallback mode');
+            
+            google.script.run
+              .withSuccessHandler((logData) => {
+                console.log('Fallback log data received:', logData);
+                
+                if (logData && logData.todaysEntries && Array.isArray(logData.todaysEntries)) {
+                  const logEntries = logData.todaysEntries;
+                  console.log(`Merging ${logEntries.length} log entries in fallback mode`);
+                  
+                  // Merge log data into existing students
+                  this.students = this.students.map(student => {
+                    const studentLogs = logEntries.filter(log => log.studentName === student.name);
+                    
+                    if (studentLogs.length > 0) {
+                      const latestLog = studentLogs[studentLogs.length - 1];
+                      console.log(`Fallback merge for ${student.name}:`, latestLog);
+                      
+                      return {
+                        ...student,
+                        gender: latestLog.gender || student.gender,
+                        teacher: latestLog.teacher || student.teacher,
+                        outTime: latestLog.outTime ? this.formatDate(latestLog.outTime) : student.outTime,
+                        backTime: latestLog.backTime ? this.formatDate(latestLog.backTime) : student.backTime,
+                        holdNotice: latestLog.holdNotice || student.holdNotice
+                      };
+                    }
+                    
+                    return student;
+                  });
+                  
+                  console.log('Fallback log merge completed successfully');
+                } else {
+                  console.log('No log entries to merge in fallback mode');
+                }
+                
+                // Clear loading state after merge completes
+                this.isLoading = false;
+                this.loadingMessage = "";
+              })
+              .withFailureHandler((error) => {
+                console.warn('Fallback log merge failed:', error);
+                // Continue without log data - don't show error to user since we have basic roster
+                this.isLoading = false;
+                this.loadingMessage = "";
+              })
+              .api_debugLogSheet();
           },
 
           handleFetch(resp) {
@@ -609,15 +773,67 @@
 
           formatDate(dt) {
             if (!dt) return "";
+            
+            // Check if it's already a formatted time string (like "2:30 PM")
+            if (typeof dt === 'string' && dt.match(/^\d{1,2}:\d{2} (AM|PM)$/)) {
+              return dt; // Already formatted, return as-is
+            }
+            
             // Check if it's already a string that's not a valid date
             if (typeof dt === 'string' && isNaN(Date.parse(dt))) {
               return dt; // Return as-is if it's not a valid date string
             }
+            
             const d = new Date(dt);
             if (isNaN(d.getTime())) {
               return dt; // Return original value if invalid date
             }
-            return d.toLocaleTimeString();
+            
+            // Format to 12-hour time with AM/PM (matching backend format)
+            let hours = d.getHours();
+            const minutes = d.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            
+            // Convert to 12-hour format
+            hours = hours % 12;
+            hours = hours ? hours : 12; // 0 should be 12
+            
+            return `${hours}:${minutes} ${ampm}`;
+          },
+
+          // Format time for display in the UI
+          formatTime(timeStr) {
+            if (!timeStr) return "";
+            
+            // If it's already in "H:MM AM/PM" format, return as-is
+            if (typeof timeStr === 'string' && timeStr.match(/^\d{1,2}:\d{2} (AM|PM)$/)) {
+              return timeStr;
+            }
+            
+            // If it's a hold notice or other text, return as-is
+            if (typeof timeStr === 'string' && isNaN(Date.parse(timeStr))) {
+              return timeStr;
+            }
+            
+            // Try to parse and format as time
+            try {
+              const d = new Date(timeStr);
+              if (isNaN(d.getTime())) {
+                return timeStr; // Return original if invalid
+              }
+              
+              // Format to 12-hour time with AM/PM
+              let hours = d.getHours();
+              const minutes = d.getMinutes().toString().padStart(2, '0');
+              const ampm = hours >= 12 ? 'PM' : 'AM';
+              
+              hours = hours % 12;
+              hours = hours ? hours : 12;
+              
+              return `${hours}:${minutes} ${ampm}`;
+            } catch (error) {
+              return timeStr; // Return original on error
+            }
           },
 
           isNextInQueue(stu) {
@@ -638,6 +854,7 @@
 
           markOut(stu) {
             console.log('markOut button clicked for:', stu.name);
+            this.recordUserAction(); // Track user activity
             console.log('Full student object:', stu);
             console.log('Gender value:', `"${stu.gender}"`, 'Type:', typeof stu.gender, 'Length:', stu.gender ? stu.gender.length : 'N/A');
             console.log('Teacher value:', `"${stu.teacher}"`, 'Type:', typeof stu.teacher, 'Length:', stu.teacher ? stu.teacher.length : 'N/A');
@@ -670,14 +887,24 @@
               gender: stu.gender
             });
             
+            // Show loading state for this specific operation
+            this.isLoading = true;
+            this.loadingMessage = `Marking ${stu.name} OUT...`;
+            
             google.script.run
               .withSuccessHandler((resp) => {
                 console.log('Mark out successful:', resp);
-                this.handleFetch(resp);
+                this.loadingMessage = "Refreshing data...";
+                // Always refresh data after successful operation to get latest times from log
+                setTimeout(() => {
+                  this.refreshData();
+                }, 500); // Short delay to ensure server has processed the update
               })
               .withFailureHandler((error) => {
                 console.error('Error marking out:', error);
                 console.error('Error details:', error.message, error.stack);
+                this.isLoading = false;
+                this.loadingMessage = "";
                 alert(`Error marking student out: ${error.message || error}\n\nCheck console for details.`);
               })
               .api_updateStatus(stu.name, "out", stu.teacher, stu.gender);
@@ -685,6 +912,7 @@
 
           markBack(stu) {
             console.log('markBack button clicked for:', stu.name);
+            this.recordUserAction(); // Track user activity
             console.log('Student data:', stu);
             console.log('Calling api_updateStatus with:', {
               name: stu.name,
@@ -693,13 +921,23 @@
               gender: stu.gender
             });
             
+            // Show loading state for this specific operation
+            this.isLoading = true;
+            this.loadingMessage = `Marking ${stu.name} BACK...`;
+            
             google.script.run
               .withSuccessHandler((resp) => {
                 console.log('Mark back successful:', resp);
-                this.handleFetch(resp);
+                this.loadingMessage = "Refreshing data...";
+                // Always refresh data after successful operation to get latest times from log
+                setTimeout(() => {
+                  this.refreshData();
+                }, 500); // Short delay to ensure server has processed the update
               })
               .withFailureHandler((error) => {
                 console.error('Error marking back:', error);
+                this.isLoading = false;
+                this.loadingMessage = "";
                 alert('Error marking student back. Please try again.');
               })
               .api_updateStatus(stu.name, "back", stu.teacher, stu.gender);
