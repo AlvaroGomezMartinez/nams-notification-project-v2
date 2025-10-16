@@ -46,6 +46,34 @@
       }
       .table-container {
         overflow-x: auto;
+        border: 3px solid #2196F3 !important;
+        border-radius: 8px !important;
+        padding: 15px !important;
+        background-color: #f8f9fa !important;
+        margin-bottom: 10px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+      }
+      
+      /* Queue table container styling */
+      .queue-container {
+        border: 3px solid #4CAF50 !important;
+        border-radius: 8px !important;
+        padding: 15px !important;
+        background-color: #f8f9fa !important;
+        margin-bottom: 10px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+      }
+      
+      /* Sticky header styles */
+      .sticky-header {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background-color: white;
+        padding: 10px 0;
+        border-bottom: 2px solid #e0e0e0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
       }
       
       /* Loading state styles */
@@ -62,19 +90,22 @@
   </head>
   <body>
     <div class="container" x-data="appData()" x-init="init()">
-      <h5 x-text="dateString"></h5>
-      <h6 x-text="'Period: ' + periodString"></h6>
-      <small x-text="nextPeriodString" style="color: #666; font-style: italic; display: block; margin-bottom: 10px;"></small>
-      
-      <!-- Auto-detected teacher info -->
-      <div class="row" x-show="detectedTeacher">
-        <div class="col s12">
-          <div class="card-panel teal lighten-4" style="padding: 10px;">
-            <span class="black-text">
-              <i class="material-icons tiny" style="vertical-align: text-bottom;">person</i>
-              Hello, <strong x-text="detectedTeacher"></strong>
-              <small x-show="userEmail">(logged in as: <span x-text="userEmail"></span>)</small>
-            </span>
+      <!-- Sticky header with date, period, and teacher info -->
+      <div class="sticky-header">
+        <h5 x-text="dateString"></h5>
+        <h6 x-text="'Period: ' + periodString"></h6>
+        <small x-text="nextPeriodString" style="color: #666; font-style: italic; display: block; margin-bottom: 10px;"></small>
+        
+        <!-- Auto-detected teacher info -->
+        <div class="row" x-show="detectedTeacher">
+          <div class="col s12">
+            <div class="card-panel teal lighten-4" style="padding: 10px;">
+              <span class="black-text">
+                <i class="material-icons tiny" style="vertical-align: text-bottom;">person</i>
+                Hello, <strong x-text="detectedTeacher"></strong>
+                <small x-show="userEmail">(logged in as: <span x-text="userEmail"></span>)</small>
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -90,126 +121,134 @@
         </div>
       </div>
 
-      <!-- Main table with loading overlay -->
-      <div class="table-container" style="position: relative;">
-        
-        <!-- Loading Spinner Overlay -->
-        <div x-show="isLoading" 
-             class="loading-overlay" 
-             style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
-                    background: rgba(255,255,255,0.8); display: flex; 
-                    align-items: center; justify-content: center; 
-                    flex-direction: column; z-index: 10; min-height: 200px;">
-          <div class="preloader-wrapper small active">
-            <div class="spinner-layer spinner-green-only">
-              <div class="circle-clipper left">
-                <div class="circle"></div>
+      <!-- Tables side by side -->
+      <div class="row">
+        <!-- Main table column -->
+        <div class="col s8">
+          <h5>Student Management</h5>
+          <div class="table-container" style="position: relative;">
+            
+            <!-- Loading Spinner Overlay -->
+            <div x-show="isLoading" 
+                 class="loading-overlay" 
+                 style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
+                        background: rgba(255,255,255,0.8); display: flex; 
+                        align-items: center; justify-content: center; 
+                        flex-direction: column; z-index: 10; min-height: 200px;">
+              <div class="preloader-wrapper small active">
+                <div class="spinner-layer spinner-green-only">
+                  <div class="circle-clipper left">
+                    <div class="circle"></div>
+                  </div>
+                  <div class="gap-patch">
+                    <div class="circle"></div>
+                  </div>
+                  <div class="circle-clipper right">
+                    <div class="circle"></div>
+                  </div>
+                </div>
               </div>
-              <div class="gap-patch">
-                <div class="circle"></div>
-              </div>
-              <div class="circle-clipper right">
-                <div class="circle"></div>
-              </div>
+              <p style="margin-top: 15px; color: #666; font-weight: 500;">
+                <span x-text="loadingMessage || 'Loading student data...'"></span>
+              </p>
             </div>
+
+            <table class="striped" :class="{ 'loading-blur': isLoading }">
+              <thead>
+                <tr>
+                  <th>Student Name</th>
+                  <th>Gender</th>
+                  <th>Teacher</th>
+                  <th>Request</th>
+                  <th>Out Time</th>
+                  <th>Back</th>
+                  <th>Back Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="stu in students" :key="stu.name">
+                  <tr :class="{ highlight: isNextInQueue(stu) }">
+                    <td x-text="stu.name"></td>
+                    <td>
+                      <select x-model="stu.gender" @change="onGenderChange(stu)" class="browser-default">
+                        <option value=""></option>
+                        <option value="G">G</option>
+                        <option value="B">B</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select x-model="stu.teacher" @change="onTeacherChange(stu)" class="browser-default">
+                        <option value="">Select Teacher</option>
+                        <template x-for="t in teachers" :key="t">
+                          <option x-text="t" :value="t"></option>
+                        </template>
+                      </select>
+                    </td>
+                    <td>
+                      <button
+                        class="btn out-btn"
+                        :class="{ 'disabled': stu.outTime || stu.holdNotice }"
+                        @click="markOut(stu)"
+                        :title="'Out disabled: ' + (stu.outTime || stu.holdNotice ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | holdNotice: ' + stu.holdNotice"
+                      >
+                        Out
+                      </button>
+                    </td>
+                    <td>
+                      <span x-text="formatTime(stu.outTime || stu.holdNotice)"></span>
+                    </td>
+                    <td>
+                      <button
+                        class="btn back-btn"
+                        :class="{ 
+                          'disabled': !stu.outTime || stu.backTime,
+                          'active': stu.outTime && !stu.backTime
+                        }"
+                        @click="markBack(stu)"
+                        :title="'Back disabled: ' + (!stu.outTime || stu.backTime ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | backTime: ' + stu.backTime"
+                      >
+                        Back
+                      </button>
+                    </td>
+                    <td>
+                      <span x-text="formatTime(stu.backTime)"></span>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
           </div>
-          <p style="margin-top: 15px; color: #666; font-weight: 500;">
-            <span x-text="loadingMessage || 'Loading student data...'"></span>
-          </p>
         </div>
 
-        <table class="striped" :class="{ 'loading-blur': isLoading }">
-          <thead>
-            <tr>
-              <th>Student Name</th>
-              <th>Gender</th>
-              <th>Teacher</th>
-              <th>Request</th>
-              <th>Out Time</th>
-              <th>Back</th>
-              <th>Back Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template x-for="stu in students" :key="stu.name">
-              <tr :class="{ highlight: isNextInQueue(stu) }">
-                <td x-text="stu.name"></td>
-                <td>
-                  <select x-model="stu.gender" @change="onGenderChange(stu)" class="browser-default">
-                    <option value=""></option>
-                    <option value="G">G</option>
-                    <option value="B">B</option>
-                  </select>
-                </td>
-                <td>
-                  <select x-model="stu.teacher" @change="onTeacherChange(stu)" class="browser-default">
-                    <option value="">Select Teacher</option>
-                    <template x-for="t in teachers" :key="t">
-                      <option x-text="t" :value="t"></option>
+        <!-- Queue table column -->
+        <div class="col s4">
+          <h5>Waiting List</h5>
+          <div class="queue-container">
+            <table class="striped">
+              <thead>
+                <tr>
+                  <th>Girls</th>
+                  <th>Boys</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <template x-for="(g, idx) in queue.girls" :key="g">
+                      <div :class="{ highlight: idx === 0 }" x-text="g"></div>
                     </template>
-                  </select>
-                </td>
-                <td>
-                  <button
-                    class="btn out-btn"
-                    :class="{ 'disabled': stu.outTime || stu.holdNotice }"
-                    @click="markOut(stu)"
-                    :title="'Out disabled: ' + (stu.outTime || stu.holdNotice ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | holdNotice: ' + stu.holdNotice"
-                  >
-                    Out
-                  </button>
-                </td>
-                <td>
-                  <span x-text="formatTime(stu.outTime || stu.holdNotice)"></span>
-                </td>
-                <td>
-                  <button
-                    class="btn back-btn"
-                    :class="{ 
-                      'disabled': !stu.outTime || stu.backTime,
-                      'active': stu.outTime && !stu.backTime
-                    }"
-                    @click="markBack(stu)"
-                    :title="'Back disabled: ' + (!stu.outTime || stu.backTime ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | backTime: ' + stu.backTime"
-                  >
-                    Back
-                  </button>
-                </td>
-                <td>
-                  <span x-text="formatTime(stu.backTime)"></span>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
+                  </td>
+                  <td>
+                    <template x-for="(b, idx) in queue.boys" :key="b">
+                      <div :class="{ highlight: idx === 0 }" x-text="b"></div>
+                    </template>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-
-      <br />
-
-      <!-- Queue table -->
-      <h5>Waiting List</h5>
-      <table class="striped">
-        <thead>
-          <tr>
-            <th>Girls</th>
-            <th>Boys</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>
-              <template x-for="(g, idx) in queue.girls" :key="g">
-                <div :class="{ highlight: idx === 0 }" x-text="g"></div>
-              </template>
-            </td>
-            <td>
-              <template x-for="(b, idx) in queue.boys" :key="b">
-                <div :class="{ highlight: idx === 0 }" x-text="b"></div>
-              </template>
-            </td>
-          </tr>
-        </tbody>
-      </table>
     </div>
 
     <!-- Materialize JS (for any components) -->
