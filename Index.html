@@ -102,6 +102,7 @@
                 </td>
                 <td>
                   <select x-model="stu.teacher" @change="onTeacherChange(stu)" class="browser-default">
+                    <option value="">Select Teacher</option>
                     <template x-for="t in teachers" :key="t">
                       <option x-text="t" :value="t"></option>
                     </template>
@@ -502,8 +503,31 @@
                   console.log('Response received:', result);
                   
                   if (result && result.students) {
-                    console.log('Processing', result.students.length, 'students');
-                    this.students = result.students;
+                    console.log('Processing', result.students.length, 'students in refreshData');
+                    console.log('Detected teacher for assignment:', this.detectedTeacher);
+                    
+                    this.students = result.students.map((s) => {
+                      // Since student data from daily sheet doesn't include teacher,
+                      // assign all students to the currently logged-in teacher
+                      const assignedTeacher = this.detectedTeacher || this.teachers[0] || "Other Teacher";
+                      
+                      const processedStudent = {
+                        name: s.name,
+                        gender: s.gender || "",
+                        teacher: s.teacher || assignedTeacher,
+                        outTime: s.outTime ? this.formatDate(s.outTime) : "",
+                        backTime: s.backTime ? this.formatDate(s.backTime) : "",
+                        holdNotice: s.holdNotice || ""
+                      };
+                      
+                      // Ensure teacher is always set to detected teacher if not already assigned
+                      if (!processedStudent.teacher || processedStudent.teacher.trim() === "" || processedStudent.teacher === "Select Teacher") {
+                        processedStudent.teacher = assignedTeacher;
+                        console.log(`Assigned teacher "${assignedTeacher}" to student "${s.name}" in refreshData`);
+                      }
+                      
+                      return processedStudent;
+                    });
                     this.queue = result.queue || { girls: [], boys: [] };
                   } else {
                     console.error('Invalid response structure:', result);
@@ -538,31 +562,33 @@
             
             // resp has { students, queue }
             console.log('Processing students:', resp.students);
+            console.log('Detected teacher for assignment:', this.detectedTeacher);
+            
             this.students = resp.students.map((s) => {
+              // Since student data from daily sheet doesn't include teacher,
+              // assign all students to the currently logged-in teacher
+              const assignedTeacher = this.detectedTeacher || this.teachers[0] || "Other Teacher";
+              
               const processedStudent = {
                 name: s.name,
                 gender: s.gender || "",
-                teacher: s.teacher || this.detectedTeacher || this.teachers[0] || "Other Teacher",
+                teacher: s.teacher || assignedTeacher,
                 outTime: s.outTime ? this.formatDate(s.outTime) : "",
                 backTime: s.backTime ? this.formatDate(s.backTime) : "",
                 holdNotice: s.holdNotice || ""
               };
               
+              // Ensure teacher is always set to detected teacher if not already assigned
+              if (!processedStudent.teacher || processedStudent.teacher.trim() === "" || processedStudent.teacher === "Select Teacher") {
+                processedStudent.teacher = assignedTeacher;
+                console.log(`Assigned teacher "${assignedTeacher}" to student "${s.name}"`);
+              }
+              
               // Debug first few students
               if (resp.students.indexOf(s) < 3) {
                 console.log(`Student ${s.name}:`, s);
                 console.log(`Processed ${s.name}:`, processedStudent);
-                console.log(`${s.name} detailed values:`, {
-                  'outTime': `"${processedStudent.outTime}"` + ` (length: ${processedStudent.outTime.length})`,
-                  'holdNotice': `"${processedStudent.holdNotice}"` + ` (length: ${processedStudent.holdNotice.length})`,
-                  'backTime': `"${processedStudent.backTime}"` + ` (length: ${processedStudent.backTime.length})`,
-                  'outTime type': typeof processedStudent.outTime,
-                  'holdNotice type': typeof processedStudent.holdNotice,
-                  'outTime truthy': !!processedStudent.outTime,
-                  'holdNotice truthy': !!processedStudent.holdNotice,
-                  'outButtonDisabled': !!(processedStudent.outTime || processedStudent.holdNotice),
-                  'backButtonDisabled': !(processedStudent.outTime && !processedStudent.backTime)
-                });
+                console.log(`${s.name} teacher assignment: "${processedStudent.teacher}"`);
               }
               
               return processedStudent;
@@ -615,6 +641,7 @@
             console.log('Full student object:', stu);
             console.log('Gender value:', `"${stu.gender}"`, 'Type:', typeof stu.gender, 'Length:', stu.gender ? stu.gender.length : 'N/A');
             console.log('Teacher value:', `"${stu.teacher}"`, 'Type:', typeof stu.teacher, 'Length:', stu.teacher ? stu.teacher.length : 'N/A');
+            console.log('Detected teacher:', this.detectedTeacher);
             
             // Validate that gender is selected
             if (!stu.gender || stu.gender.trim() === "") {
@@ -623,7 +650,13 @@
               return;
             }
             
-            // Validate that teacher is selected
+            // If teacher is not selected, auto-assign the detected teacher
+            if (!stu.teacher || stu.teacher.trim() === "" || stu.teacher === "Select Teacher") {
+              console.log('Teacher not selected, auto-assigning detected teacher:', this.detectedTeacher);
+              stu.teacher = this.detectedTeacher || this.teachers[0] || "Other Teacher";
+            }
+            
+            // Validate that teacher is now selected
             if (!stu.teacher || stu.teacher.trim() === "") {
               console.log('Teacher validation failed - showing alert');
               alert('Please select a teacher before marking the student out.');
