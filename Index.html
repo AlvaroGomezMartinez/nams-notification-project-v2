@@ -21,11 +21,23 @@
         color: red;
       }
       .out-btn {
-        background-color: #f9a825; /* amber/dark yellow */
+        background-color: #1976d2; /* blue instead of amber */
         color: white;
       }
       .out-btn.disabled {
         background-color: #9e9e9e !important; /* grey when disabled */
+        color: #ffffff !important;
+        pointer-events: none;
+        opacity: 0.6;
+      }
+      .out-btn.waiting {
+        background-color: #424242 !important; /* darker grey for WAITING */
+        color: #ffffff !important;
+        pointer-events: none;
+        opacity: 0.8;
+      }
+      .out-btn.already-went {
+        background-color: #757575 !important; /* grey for ALREADY WENT */
         color: #ffffff !important;
         pointer-events: none;
         opacity: 0.6;
@@ -44,10 +56,14 @@
         pointer-events: none;
         opacity: 0.6;
       }
+      .back-btn.already-went {
+        background-color: #757575 !important; /* grey for ALREADY WENT */
+        color: #ffffff !important;
+        pointer-events: none;
+        opacity: 0.6;
+      }
       .table-container {
         overflow-x: auto;
-        border: 3px solid #2196F3 !important;
-        border-radius: 8px !important;
         padding: 15px !important;
         background-color: #f8f9fa !important;
         margin-bottom: 10px !important;
@@ -56,7 +72,7 @@
       
       /* Queue table container styling */
       .queue-container {
-        border: 3px solid #4CAF50 !important;
+        border: 1px solid #07224c !important;
         border-radius: 8px !important;
         padding: 15px !important;
         background-color: #f8f9fa !important;
@@ -86,15 +102,21 @@
       .loading-overlay {
         border-radius: 4px;
       }
+      
+      /* Center table headers */
+      th {
+        text-align: center !important;
+      }
     </style>
   </head>
   <body>
     <div class="container" x-data="appData()" x-init="init()">
       <!-- Sticky header with date, period, and teacher info -->
       <div class="sticky-header">
+        <h4>Northside Alternative MS</h4>
         <h5 x-text="dateString"></h5>
-        <h6 x-text="'Period: ' + periodString"></h6>
-        <small x-text="nextPeriodString" style="color: #666; font-style: italic; display: block; margin-bottom: 10px;"></small>
+        <h6 x-text="'Current Period: ' + periodString"></h6>
+        <small x-text="nextPeriodString" style="color: #292f60; font-style: italic; display: block; margin-bottom: 10px;"></small>
         
         <!-- Auto-detected teacher info -->
         <div class="row" x-show="detectedTeacher">
@@ -159,15 +181,15 @@
                   <th>Student Name</th>
                   <th>Gender</th>
                   <th>Teacher</th>
-                  <th>Request</th>
+                  <th>Status 1</th>
                   <th>Out Time</th>
-                  <th>Back</th>
+                  <th>Status 2</th>
                   <th>Back Time</th>
                 </tr>
               </thead>
               <tbody>
                 <template x-for="stu in students" :key="stu.name">
-                  <tr :class="{ highlight: isNextInQueue(stu) }">
+                  <tr :class="{ highlight: isReadyToMarkOut(stu) }">
                     <td x-text="stu.name"></td>
                     <td>
                       <select x-model="stu.gender" @change="onGenderChange(stu)" class="browser-default">
@@ -187,11 +209,11 @@
                     <td>
                       <button
                         class="btn out-btn"
-                        :class="{ 'disabled': stu.outTime || stu.holdNotice }"
+                        :class="getButtonClass(stu)"
                         @click="markOut(stu)"
-                        :title="'Out disabled: ' + (stu.outTime || stu.holdNotice ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | holdNotice: ' + stu.holdNotice"
+                        :title="getButtonTitle(stu)"
                       >
-                        Out
+                        <span x-text="getButtonText(stu)"></span>
                       </button>
                     </td>
                     <td>
@@ -202,12 +224,13 @@
                         class="btn back-btn"
                         :class="{ 
                           'disabled': !stu.outTime || stu.backTime,
-                          'active': stu.outTime && !stu.backTime
+                          'active': stu.outTime && !stu.backTime,
+                          'already-went': stu.outTime && stu.backTime
                         }"
                         @click="markBack(stu)"
-                        :title="'Back disabled: ' + (!stu.outTime || stu.backTime ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | backTime: ' + stu.backTime"
+                        :title="getBackButtonTitle(stu)"
                       >
-                        Back
+                        <span x-text="getBackButtonText(stu)"></span>
                       </button>
                     </td>
                     <td>
@@ -880,6 +903,89 @@
             return q.length > 0 && q[0] === stu.name;
           },
 
+          isReadyToMarkOut(stu) {
+            // Highlight a student if they are next in queue AND no one of their gender is currently out
+            if (!this.isNextInQueue(stu)) {
+              return false; // Not next in queue
+            }
+            
+            // Check if anyone of the same gender is currently out (has outTime but no backTime)
+            const studentsOfSameGender = this.students.filter(s => s.gender === stu.gender);
+            const anyoneOut = studentsOfSameGender.some(s => s.outTime && !s.backTime);
+            
+            // Highlight if this student is next in queue AND no one of their gender is currently out
+            return !anyoneOut;
+          },
+
+          getButtonText(stu) {
+            // If student already completed their trip (has both out and back times)
+            if (stu.outTime && stu.backTime) {
+              return 'ALREADY WENT';
+            }
+            
+            // If student has no hold notice and no out time, show regular request button
+            if (!stu.holdNotice && !stu.outTime) {
+              return 'REQUEST RR';
+            }
+            
+            // If student is currently out (has out time but no back time)
+            if (stu.outTime && !stu.backTime) {
+              return 'ALREADY WENT';
+            }
+            
+            // If student is on waiting list, check their position
+            if (this.isReadyToMarkOut(stu)) {
+              // Student is next in line and restroom is available
+              return 'RR AVAILABLE';
+            } else {
+              // Student is waiting but not ready yet (either not first in line or restroom occupied)
+              return 'WAITING';
+            }
+          },
+
+          getButtonClass(stu) {
+            // If student already completed their trip or is currently out
+            if ((stu.outTime && stu.backTime) || (stu.outTime && !stu.backTime)) {
+              return 'already-went';
+            }
+            
+            // If student is waiting but not ready
+            if (stu.holdNotice && !this.isReadyToMarkOut(stu)) {
+              return 'waiting';
+            }
+            
+            // If student has no out time and no hold notice, or is ready to mark out
+            if ((!stu.outTime && !stu.holdNotice) || this.isReadyToMarkOut(stu)) {
+              return ''; // Default styling
+            }
+            
+            return 'disabled';
+          },
+
+          getButtonTitle(stu) {
+            const buttonText = this.getButtonText(stu);
+            
+            if (buttonText === 'RR AVAILABLE') {
+              return 'SEND NOW';
+            }
+            
+            return 'Student status - outTime: ' + stu.outTime + ' | holdNotice: ' + stu.holdNotice + ' | ready to promote: ' + this.isReadyToMarkOut(stu);
+          },
+
+          getBackButtonText(stu) {
+            if (stu.outTime && stu.backTime) {
+              return 'ALREADY WENT';
+            }
+            return 'Back';
+          },
+
+          getBackButtonTitle(stu) {
+            if (stu.outTime && stu.backTime) {
+              return 'Student has already completed their restroom visit';
+            }
+            return 'Back disabled: ' + (!stu.outTime || stu.backTime ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | backTime: ' + stu.backTime;
+          },
+
           onGenderChange(stu) {
             // Update gender on the server
             console.log('Gender changed for', stu.name, 'to', stu.gender);
@@ -893,6 +999,19 @@
 
           markOut(stu) {
             console.log('markOut button clicked for:', stu.name);
+            
+            // Prevent action if student already went (has both out and back times) or is currently out
+            if ((stu.outTime && stu.backTime) || (stu.outTime && !stu.backTime)) {
+              console.log('Student already went or is currently out, ignoring click');
+              return;
+            }
+            
+            // Prevent action if student is waiting but not ready
+            if (stu.holdNotice && !this.isReadyToMarkOut(stu)) {
+              console.log('Student is waiting but not ready, ignoring click');
+              return;
+            }
+            
             this.recordUserAction(); // Track user activity
             console.log('Full student object:', stu);
             console.log('Gender value:', `"${stu.gender}"`, 'Type:', typeof stu.gender, 'Length:', stu.gender ? stu.gender.length : 'N/A');
@@ -928,7 +1047,11 @@
             
             // Show loading state for this specific operation
             this.isLoading = true;
-            this.loadingMessage = `Marking ${stu.name} OUT...`;
+            if (stu.holdNotice) {
+              this.loadingMessage = `Processing ${stu.name} from waiting list...`;
+            } else {
+              this.loadingMessage = `Marking ${stu.name} OUT...`;
+            }
             
             google.script.run
               .withSuccessHandler((resp) => {

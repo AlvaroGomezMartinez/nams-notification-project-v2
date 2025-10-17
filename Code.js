@@ -388,34 +388,45 @@ function updateStatus(studentName, action, teacherName, gender) {
   
   if (action === "out") {
     try {
-      console.log('Checking if restroom is available for gender:', gender);
-      // Check if restroom is free for that gender (only one boy and one girl allowed out at a time)
-      const otherOut = _checkOtherOut(gender);
-      console.log('Other student out:', otherOut);
+      console.log('Checking current student status...');
+      // First check if this student is currently waiting in line
+      const currentStatus = _getCurrentRestroomStatus();
+      const studentStatus = currentStatus[studentName];
       
-      if (otherOut) {
-        console.log('Restroom occupied, adding to waiting list');
-        // Someone of the same gender is already out. Add to waiting list
-        const currentStatus = _getCurrentRestroomStatus();
-        let waitingCount = 0;
-        for (const [name, status] of Object.entries(currentStatus)) {
-          if (status.gender === gender && status.holdNotice && !status.outTime) {
-            waitingCount++;
-          }
-        }
-        const position = waitingCount + 1;
-        const notice = `Waiting in line. Position ${position}.`;
-        
-        console.log('Logging waiting entry:', { studentName, studentId, gender, teacherName, notice });
-        // Log the waiting entry
-        _logWaitingEntry(studentName, studentId, gender, teacherName, notice);
-        console.log('Waiting entry logged successfully');
+      if (studentStatus && studentStatus.holdNotice && !studentStatus.outTime) {
+        console.log('Student is waiting in line, updating existing log entry with out time');
+        // Student is waiting in line - update their existing log entry with out time
+        _updateWaitingEntryToOut(studentName, studentId, gender, teacherName, now);
+        console.log('Waiting entry updated to out successfully');
       } else {
-        console.log('Restroom available, marking student out');
-        // Mark student as out - log the out entry
-        console.log('Logging out entry:', { studentName, studentId, gender, teacherName, outTime: now });
-        _logOutEntry(studentName, studentId, gender, teacherName, now);
-        console.log('Out entry logged successfully');
+        console.log('Checking if restroom is available for gender:', gender);
+        // Normal flow - check if restroom is free for that gender
+        const otherOut = _checkOtherOut(gender);
+        console.log('Other student out:', otherOut);
+        
+        if (otherOut) {
+          console.log('Restroom occupied, adding to waiting list');
+          // Someone of the same gender is already out. Add to waiting list
+          let waitingCount = 0;
+          for (const [name, status] of Object.entries(currentStatus)) {
+            if (status.gender === gender && status.holdNotice && !status.outTime) {
+              waitingCount++;
+            }
+          }
+          const position = waitingCount + 1;
+          const notice = `Waiting in line. Position ${position}.`;
+          
+          console.log('Logging waiting entry:', { studentName, studentId, gender, teacherName, notice });
+          // Log the waiting entry
+          _logWaitingEntry(studentName, studentId, gender, teacherName, notice);
+          console.log('Waiting entry logged successfully');
+        } else {
+          console.log('Restroom available, marking student out');
+          // Mark student as out - log the out entry
+          console.log('Logging out entry:', { studentName, studentId, gender, teacherName, outTime: now });
+          _logOutEntry(studentName, studentId, gender, teacherName, now);
+          console.log('Out entry logged successfully');
+        }
       }
     } catch (logError) {
       console.error('Error during out action logging:', logError);
@@ -425,8 +436,8 @@ function updateStatus(studentName, action, teacherName, gender) {
     // Mark student as back - complete the log entry
     _logBackEntry(studentName, studentId, gender, teacherName, now);
     
-    // After marking back, promote the next person in queue if any
-    _promoteNextFromQueue(gender);
+    // REMOVED: No longer automatically promote the next person in queue
+    // The next student will be highlighted in the UI and manually marked out by the teacher
   }
 }
 
@@ -501,6 +512,43 @@ function _logWaitingEntry(studentName, studentId, gender, teacherName, holdNotic
   // A: Date, B: Student Name, C: Student ID, D: Gender, E: Teacher, F: Out Time, G: Back Time, H: Hold Notice
   const row = [date, studentName, studentId, gender, teacherName, "", "", holdNotice];
   logSheet.appendRow(row);
+}
+
+/** 
+ * Update an existing waiting entry to mark the student as out
+ * Finds the most recent waiting entry for this student and adds the out time
+ */
+function _updateWaitingEntryToOut(studentName, studentId, gender, teacherName, outTime) {
+  const ss = getSpreadsheet();
+  const logSheet = ss.getSheetByName("Log");
+  if (!logSheet) return;
+  
+  const date = new Date().toLocaleDateString();
+  const outTimeFormatted = _formatTimeToHHMM(outTime);
+  
+  // Find the most recent "waiting" entry for this student today and update it
+  const data = logSheet.getDataRange().getValues();
+  
+  for (let r = data.length - 1; r >= 1; r--) {
+    const row = data[r];
+    const entryDate = row[0] ? new Date(row[0]).toLocaleDateString() : '';
+    const entryName = row[1];
+    const entryOutTime = row[5];
+    const entryBackTime = row[6];
+    const entryHoldNotice = row[7];
+    
+    if (entryDate === date && entryName === studentName && entryHoldNotice && !entryOutTime && !entryBackTime) {
+      // Found the waiting entry - update it with out time and clear hold notice
+      console.log(`Updating waiting entry for ${studentName} at row ${r + 1} with out time: ${outTimeFormatted}`);
+      logSheet.getRange(r + 1, 6).setValue(outTimeFormatted); // Out Time (column F)
+      logSheet.getRange(r + 1, 8).setValue(""); // Clear Hold Notice (column H)
+      return;
+    }
+  }
+  
+  // If no waiting entry found, create a new out entry (fallback)
+  console.log(`No waiting entry found for ${studentName}, creating new out entry`);
+  _logOutEntry(studentName, studentId, gender, teacherName, outTime);
 }
 
 /**
