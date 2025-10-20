@@ -327,29 +327,7 @@
       box-shadow: 0 4px 8px rgba(211, 47, 47, 0.3);
     }
 
-    /* Data staleness indicator */
-    .out-btn.data-stale {
-      position: relative;
-      border: 2px solid #ff9800 !important;
-      box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.2) !important;
-    }
-    
-    .out-btn.data-stale::before {
-      content: '⚠';
-      position: absolute;
-      top: -8px;
-      right: -8px;
-      background-color: #ff9800;
-      color: white;
-      border-radius: 50%;
-      width: 18px;
-      height: 18px;
-      font-size: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-    }
+
 
     .table-container {
       overflow-x: auto;
@@ -462,16 +440,7 @@
             <i class="material-icons left">analytics</i>Performance Stats
           </button>
 
-          <div x-show="lastUpdateTimestamp" style="display: inline-block; margin-left: 10px;">
-            <span :style="getDataFreshnessStyle()" style="font-size: 0.9em; padding: 4px 8px; border-radius: 4px; display: inline-block;">
-              <i class="material-icons" style="font-size: 16px; vertical-align: middle;" x-text="getDataFreshnessIcon()"></i>
-              <span x-text="getDataFreshnessText()"></span>
-            </span>
-            <div x-show="shouldShowDataWarning()" style="margin-top: 5px; padding: 8px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; font-size: 0.85em; color: #856404;">
-              <i class="material-icons" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">warning</i>
-              <strong>Data may be outdated.</strong> Click "Refresh Data" for latest status before marking students out.
-            </div>
-          </div>
+
         </div>
       </div>
     </div>
@@ -482,18 +451,7 @@
       <div class="col s8">
         <h5>Student Management</h5>
         
-        <!-- Data Staleness Warning Banner -->
-        <div x-show="shouldShowDataWarning()" style="margin-bottom: 15px; padding: 12px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; color: #856404;">
-          <div style="display: flex; align-items: center; margin-bottom: 8px;">
-            <i class="material-icons" style="margin-right: 8px; color: #f57c00;">warning</i>
-            <strong>Data May Be Outdated</strong>
-          </div>
-          <p style="margin: 0; font-size: 0.9em; line-height: 1.4;">
-            Student status was last updated <span x-text="getDataFreshnessText().toLowerCase()"></span>. 
-            To avoid duplicate entries, click <strong>"Refresh Data"</strong> before marking students out.
-            The system automatically updates every 30-60 seconds.
-          </p>
-        </div>
+
         
         <div class="table-container" style="position: relative;">
 
@@ -2431,56 +2389,15 @@
           return this.formatTimestamp(this.lastUpdateTimestamp);
         },
 
-        // Get data freshness status and styling
-        getDataFreshnessStyle() {
-          const ageSeconds = this.getDataAgeSeconds();
-          
-          if (ageSeconds < 30) {
-            // Fresh data (< 30 seconds)
-            return 'background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb;';
-          } else if (ageSeconds < 90) {
-            // Slightly stale (30-90 seconds)
-            return 'background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7;';
-          } else {
-            // Stale data (> 90 seconds)
-            return 'background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;';
-          }
-        },
 
-        getDataFreshnessIcon() {
-          const ageSeconds = this.getDataAgeSeconds();
-          
-          if (ageSeconds < 30) {
-            return 'check_circle';
-          } else if (ageSeconds < 90) {
-            return 'schedule';
-          } else {
-            return 'warning';
-          }
-        },
 
-        getDataFreshnessText() {
-          const ageSeconds = this.getDataAgeSeconds();
-          
-          if (ageSeconds < 30) {
-            return `Fresh data (${ageSeconds}s ago)`;
-          } else if (ageSeconds < 90) {
-            return `Updating soon (${ageSeconds}s ago)`;
-          } else {
-            const minutes = Math.floor(ageSeconds / 60);
-            return `Stale data (${minutes}m ago)`;
-          }
-        },
 
-        shouldShowDataWarning() {
-          const ageSeconds = this.getDataAgeSeconds();
-          return ageSeconds > 90; // Show warning if data is older than 90 seconds
-        },
 
-        getDataAgeSeconds() {
-          if (!this.lastUpdateTimestamp) return 0;
-          return Math.floor((Date.now() - this.lastUpdateTimestamp) / 1000);
-        },
+
+
+
+
+
         
         // Log comprehensive performance report
         _logPerformanceReport(isActiveReport = false) {
@@ -2878,11 +2795,7 @@
             baseClass = 'disabled';
           }
           
-          // Add data staleness indicator for interactive buttons
-          const isInteractiveButton = !baseClass || baseClass === 'rr-available';
-          if (isInteractiveButton && this.shouldShowDataWarning()) {
-            baseClass += ' data-stale';
-          }
+
           
           return baseClass;
         },
@@ -2897,12 +2810,7 @@
             baseTitle = `Student status - outTime: ${stu.outTime} | holdNotice: ${stu.holdNotice} | ready to promote: ${this.isReadyToMarkOut(stu)}`;
           }
           
-          // Add staleness warning for interactive buttons
-          const isInteractiveButton = buttonText === 'REQUEST RR' || buttonText === 'RR AVAILABLE';
-          if (isInteractiveButton && this.shouldShowDataWarning()) {
-            const ageText = this.getDataFreshnessText().toLowerCase();
-            baseTitle += `\n\n⚠️ WARNING: Data ${ageText}. Click "Refresh Data" first to avoid duplicates.`;
-          }
+
           
           return baseTitle;
         },
