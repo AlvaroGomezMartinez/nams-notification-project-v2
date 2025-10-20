@@ -70,10 +70,12 @@
       font-size: 14px;
       font-weight: 500;
       text-decoration: none;
-      transition: all 0.2s;
+      transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
     }
 
-    .btn:hover {
+    .btn:hover:not(.disabled):not(.currently-out):not(.waiting):not(.already-went) {
       transform: translateY(-1px);
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
@@ -195,6 +197,7 @@
       background-color: #1976d2;
       /* blue instead of amber */
       color: white;
+      transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
     }
 
     .out-btn.disabled {
@@ -203,6 +206,7 @@
       color: #ffffff !important;
       pointer-events: none;
       opacity: 0.6;
+      transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
     }
 
     .out-btn.waiting {
@@ -211,6 +215,7 @@
       color: #ffffff !important;
       pointer-events: none;
       opacity: 0.8;
+      transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
     }
 
     .out-btn.already-went {
@@ -219,12 +224,42 @@
       color: #ffffff !important;
       pointer-events: none;
       opacity: 0.6;
+      transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    }
+
+    /* Enhanced button states for new behavior */
+    .out-btn.currently-out {
+      background-color: #ffc107 !important;
+      /* yellow for CURRENTLY OUT */
+      color: #000000 !important;
+      /* black text for better contrast on yellow */
+      pointer-events: none;
+      opacity: 1;
+      font-weight: 600;
+      transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    }
+
+    .out-btn.rr-available {
+      background-color: #4caf50 !important;
+      /* green for RR AVAILABLE */
+      color: #ffffff !important;
+      pointer-events: auto;
+      opacity: 1;
+      font-weight: 600;
+      transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    }
+
+    .out-btn.rr-available:hover {
+      background-color: #45a049 !important;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
     }
 
     .back-btn {
       background-color: #43a047;
       /* green */
       color: white;
+      transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
     }
 
     .back-btn.active {
@@ -247,6 +282,66 @@
       color: #ffffff !important;
       pointer-events: none;
       opacity: 0.6;
+      transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    }
+
+    /* Enhanced button state transitions and animations */
+    .out-btn, .back-btn {
+      transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+      will-change: background-color, color, transform, box-shadow, opacity;
+    }
+
+    /* Smooth color transitions for all button states */
+    .out-btn:not(.disabled):not(.currently-out):not(.waiting):not(.already-went):hover {
+      background-color: #1565c0 !important;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(25, 118, 210, 0.3);
+    }
+
+    /* Focus states for accessibility */
+    .btn:focus {
+      outline: 2px solid #2196f3;
+      outline-offset: 2px;
+    }
+
+    .out-btn.currently-out:focus,
+    .out-btn.waiting:focus,
+    .out-btn.disabled:focus,
+    .out-btn.already-went:focus {
+      outline: none; /* Remove focus outline for non-interactive states */
+    }
+
+    /* Animation for button state changes */
+    @keyframes buttonStateChange {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+
+    .btn.state-changing {
+      animation: buttonStateChange 0.3s ease-in-out;
+    }
+
+    /* Back button visibility states */
+    .back-btn.hidden {
+      visibility: hidden;
+      opacity: 0;
+      transition: visibility 0s 0.3s, opacity 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+      transform: scale(0.95);
+    }
+
+    .back-btn.visible {
+      visibility: visible;
+      opacity: 1;
+      transition: visibility 0s, opacity 0.3s cubic-bezier(0.4, 0.0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+      transform: scale(1);
+    }
+
+    /* Enhanced Back button active state */
+    .back-btn.active:hover {
+      background-color: #c62828 !important;
+      transform: translateY(-1px) scale(1);
+      box-shadow: 0 4px 8px rgba(211, 47, 47, 0.3);
     }
 
     .table-container {
@@ -428,7 +523,8 @@
                   </td>
                   <td>
                     <button class="btn back-btn" :class="{ 
-                          'disabled': !stu.outTime || stu.backTime,
+                          'hidden': !stu.outTime || stu.backTime,
+                          'visible': stu.outTime && !stu.backTime,
                           'active': stu.outTime && !stu.backTime,
                           'already-went': stu.outTime && stu.backTime
                         }" @click="markBack(stu)" :title="getBackButtonTitle(stu)">
@@ -1131,7 +1227,7 @@
 
           // If student is currently out (has out time but no back time)
           if (stu.outTime && !stu.backTime) {
-            return 'ALREADY WENT';
+            return 'CURRENTLY OUT';
           }
 
           // If student is on waiting list, check their position
@@ -1145,9 +1241,19 @@
         },
 
         getButtonClass(stu) {
-          // If student already completed their trip or is currently out
-          if ((stu.outTime && stu.backTime) || (stu.outTime && !stu.backTime)) {
+          // If student already completed their trip (has both out and back times)
+          if (stu.outTime && stu.backTime) {
             return 'already-went';
+          }
+
+          // If student is currently out (has out time but no back time)
+          if (stu.outTime && !stu.backTime) {
+            return 'currently-out';
+          }
+
+          // If student is ready to mark out (next in queue and restroom available)
+          if (this.isReadyToMarkOut(stu)) {
+            return 'rr-available';
           }
 
           // If student is waiting but not ready
@@ -1155,8 +1261,8 @@
             return 'waiting';
           }
 
-          // If student has no out time and no hold notice, or is ready to mark out
-          if ((!stu.outTime && !stu.holdNotice) || this.isReadyToMarkOut(stu)) {
+          // If student has no out time and no hold notice (default state)
+          if (!stu.outTime && !stu.holdNotice) {
             return ''; // Default styling
           }
 
@@ -1177,14 +1283,17 @@
           if (stu.outTime && stu.backTime) {
             return 'ALREADY WENT';
           }
-          return 'Back';
+          return 'BACK';
         },
 
         getBackButtonTitle(stu) {
           if (stu.outTime && stu.backTime) {
             return 'Student has already completed their restroom visit';
           }
-          return 'Back disabled: ' + (!stu.outTime || stu.backTime ? 'true' : 'false') + ' | outTime: ' + stu.outTime + ' | backTime: ' + stu.backTime;
+          if (stu.outTime && !stu.backTime) {
+            return 'Click to mark student as returned from restroom';
+          }
+          return 'Back button hidden - student must be marked out first';
         },
 
         onGenderChange(stu) {
