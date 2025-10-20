@@ -85,6 +85,9 @@ credentials/
 ### Ignore local environment files used by the project
 local.settings.json
 
+### Ignore Kiro files
+.kiro
+
 ### Project specific: keep only source files
 !/*.html
 !/*.js
