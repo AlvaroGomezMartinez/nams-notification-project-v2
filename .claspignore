@@ -28,6 +28,7 @@ node_modules/
 .idea/
 .DS_Store
 *.log
+.kiro/
 
 # Package & build files
 package.json
