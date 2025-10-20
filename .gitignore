@@ -87,6 +87,7 @@ local.settings.json
 
 ### Ignore Kiro files
 .kiro
+INTEGRATION_SUMMARY.md
 
 ### Project specific: keep only source files
 !/*.html
