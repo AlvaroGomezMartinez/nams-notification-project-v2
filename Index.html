@@ -117,70 +117,53 @@
       text-align: center !important;
     }
 
-    /* Loading spinner */
-    .preloader-wrapper {
-      display: inline-block;
-      width: 40px;
-      height: 40px;
+    /* Modern Spinner CSS Custom Properties */
+    :root {
+      --spinner-primary-color: #2196F3;
+      --spinner-secondary-color: rgba(33, 150, 243, 0.3);
+      --spinner-size: 12px;
+      --spinner-spacing: 8px;
+      --spinner-duration: 1.2s;
     }
 
-    .preloader-wrapper.active .spinner-layer {
-      animation: container-rotate 1568ms linear infinite;
+    /* Modern Pulsing Dots Spinner */
+    .modern-spinner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spinner-spacing);
     }
 
-    .spinner-layer {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      border-color: #4caf50;
-    }
-
-    .circle-clipper .circle {
-      width: 100%;
-      height: 100%;
-      border: 3px solid;
-      border-color: inherit;
+    .modern-spinner .dot {
+      width: var(--spinner-size);
+      height: var(--spinner-size);
+      background-color: var(--spinner-primary-color);
       border-radius: 50%;
-      animation: fill-unfill-rotate 5332ms cubic-bezier(0.4, 0.0, 0.2, 1) infinite both;
+      animation: pulse-dot var(--spinner-duration) ease-in-out infinite;
+      will-change: transform, opacity;
     }
 
-    @keyframes container-rotate {
-      to {
-        transform: rotate(360deg)
-      }
+    .modern-spinner .dot:nth-child(1) {
+      animation-delay: 0s;
     }
 
-    @keyframes fill-unfill-rotate {
-      12.5% {
-        transform: rotate(135deg)
-      }
+    .modern-spinner .dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
 
-      25% {
-        transform: rotate(270deg)
-      }
+    .modern-spinner .dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
 
-      37.5% {
-        transform: rotate(405deg)
+    /* Pulsing Animation Keyframes */
+    @keyframes pulse-dot {
+      0%, 100% {
+        transform: scale(0.8);
+        opacity: 0.3;
       }
-
       50% {
-        transform: rotate(540deg)
-      }
-
-      62.5% {
-        transform: rotate(675deg)
-      }
-
-      75% {
-        transform: rotate(810deg)
-      }
-
-      87.5% {
-        transform: rotate(945deg)
-      }
-
-      to {
-        transform: rotate(1080deg)
+        transform: scale(1.2);
+        opacity: 1;
       }
     }
 
@@ -344,6 +327,30 @@
       box-shadow: 0 4px 8px rgba(211, 47, 47, 0.3);
     }
 
+    /* Data staleness indicator */
+    .out-btn.data-stale {
+      position: relative;
+      border: 2px solid #ff9800 !important;
+      box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.2) !important;
+    }
+    
+    .out-btn.data-stale::before {
+      content: '⚠';
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background-color: #ff9800;
+      color: white;
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+    }
+
     .table-container {
       overflow-x: auto;
       overflow-y: auto;
@@ -444,10 +451,28 @@
 
 
 
-    <!-- Test buttons for debugging -->
+    <!-- Performance and refresh controls -->
     <div class="row" style="margin-bottom: 10px;">
       <div class="col s12">
-        <!-- Test buttons removed - app is now working -->
+        <div class="card-panel" style="padding: 10px;">
+          <button class="btn" @click="manualRefresh()" style="margin-right: 10px;">
+            <i class="material-icons left">refresh</i>Refresh Data
+          </button>
+          <button class="btn" @click="showPerformanceStats()" style="margin-right: 10px;">
+            <i class="material-icons left">analytics</i>Performance Stats
+          </button>
+
+          <div x-show="lastUpdateTimestamp" style="display: inline-block; margin-left: 10px;">
+            <span :style="getDataFreshnessStyle()" style="font-size: 0.9em; padding: 4px 8px; border-radius: 4px; display: inline-block;">
+              <i class="material-icons" style="font-size: 16px; vertical-align: middle;" x-text="getDataFreshnessIcon()"></i>
+              <span x-text="getDataFreshnessText()"></span>
+            </span>
+            <div x-show="shouldShowDataWarning()" style="margin-top: 5px; padding: 8px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; font-size: 0.85em; color: #856404;">
+              <i class="material-icons" style="font-size: 16px; vertical-align: middle; margin-right: 4px;">warning</i>
+              <strong>Data may be outdated.</strong> Click "Refresh Data" for latest status before marking students out.
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -456,6 +481,20 @@
       <!-- Main table column -->
       <div class="col s8">
         <h5>Student Management</h5>
+        
+        <!-- Data Staleness Warning Banner -->
+        <div x-show="shouldShowDataWarning()" style="margin-bottom: 15px; padding: 12px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; color: #856404;">
+          <div style="display: flex; align-items: center; margin-bottom: 8px;">
+            <i class="material-icons" style="margin-right: 8px; color: #f57c00;">warning</i>
+            <strong>Data May Be Outdated</strong>
+          </div>
+          <p style="margin: 0; font-size: 0.9em; line-height: 1.4;">
+            Student status was last updated <span x-text="getDataFreshnessText().toLowerCase()"></span>. 
+            To avoid duplicate entries, click <strong>"Refresh Data"</strong> before marking students out.
+            The system automatically updates every 30-60 seconds.
+          </p>
+        </div>
+        
         <div class="table-container" style="position: relative;">
 
           <!-- Loading Spinner Overlay -->
@@ -463,18 +502,10 @@
                         background: rgba(255,255,255,0.8); display: flex; 
                         align-items: center; justify-content: center; 
                         flex-direction: column; z-index: 10; min-height: 200px;">
-            <div class="preloader-wrapper small active">
-              <div class="spinner-layer spinner-green-only">
-                <div class="circle-clipper left">
-                  <div class="circle"></div>
-                </div>
-                <div class="gap-patch">
-                  <div class="circle"></div>
-                </div>
-                <div class="circle-clipper right">
-                  <div class="circle"></div>
-                </div>
-              </div>
+            <div class="modern-spinner">
+              <div class="dot"></div>
+              <div class="dot"></div>
+              <div class="dot"></div>
             </div>
             <p style="margin-top: 15px; color: #666; font-weight: 500;">
               <span x-text="loadingMessage || 'Loading student data...'"></span>
@@ -575,6 +606,908 @@
 
 
   <script>
+    /**
+     * SmartPollingManager for adaptive refresh based on user activity
+     * Adjusts polling frequency based on user interaction patterns
+     */
+    class SmartPollingManager {
+      constructor() {
+        this.isActive = false;
+        this.currentInterval = null;
+        this.isCheckingForUpdates = false; // Prevent concurrent update checks
+        this.baseIntervalMs = 60000; // 1 minute base interval
+        this.activeIntervalMs = 30000; // 30 seconds when active
+        this.inactiveIntervalMs = 120000; // 2 minutes when inactive
+        this.maxIntervalMs = 300000; // 5 minutes maximum
+        
+        this.lastUserActivity = Date.now();
+        this.lastUpdateCheck = 0;
+        this.lastUpdateTimestamp = 0;
+        this.consecutiveNoChanges = 0;
+        this.maxConsecutiveNoChanges = 5;
+        
+        this.activityThresholds = {
+          active: 60000, // 1 minute since last activity = active
+          inactive: 300000, // 5 minutes since last activity = inactive
+          dormant: 900000 // 15 minutes since last activity = dormant
+        };
+        
+        this.callbacks = {
+          onUpdate: null,
+          onActivityChange: null
+        };
+        
+        this.stats = {
+          totalChecks: 0,
+          updatesFound: 0,
+          lastUpdateTime: null,
+          averageInterval: this.baseIntervalMs
+        };
+      }
+
+      /**
+       * Start adaptive polling with callbacks
+       * @param {Function} updateCallback - Function to call when updates are needed
+       * @param {Function} activityCallback - Function to call when activity level changes
+       */
+      startAdaptivePolling(updateCallback, activityCallback = null) {
+        console.log('SmartPollingManager: Starting adaptive polling');
+        
+        this.callbacks.onUpdate = updateCallback;
+        this.callbacks.onActivityChange = activityCallback;
+        this.isActive = true;
+        this.lastUserActivity = Date.now();
+        
+        // Start with base interval
+        this._scheduleNextCheck(this.baseIntervalMs);
+        
+        // Set up activity monitoring
+        this._setupActivityMonitoring();
+        
+        console.log(`SmartPollingManager: Started with ${this.baseIntervalMs}ms base interval`);
+      }
+
+      /**
+       * Stop adaptive polling
+       */
+      stopPolling() {
+        console.log('SmartPollingManager: Stopping adaptive polling');
+        
+        if (this.currentInterval) {
+          clearTimeout(this.currentInterval);
+          this.currentInterval = null;
+        }
+        
+        this.isActive = false;
+        this.isCheckingForUpdates = false; // Clear any pending check flag
+        this._cleanupActivityMonitoring();
+      }
+
+      /**
+       * Record user activity to adjust polling frequency
+       */
+      recordUserActivity() {
+        const now = Date.now();
+        const wasActive = this._isUserActive();
+        
+        this.lastUserActivity = now;
+        
+        // Check if activity level changed
+        const isNowActive = this._isUserActive();
+        if (wasActive !== isNowActive && this.callbacks.onActivityChange) {
+          this.callbacks.onActivityChange(isNowActive ? 'active' : 'inactive');
+        }
+        
+        // If we were in a long interval and user became active, reschedule sooner
+        if (isNowActive && this.currentInterval) {
+          const nextCheckIn = this._getOptimalInterval();
+          if (nextCheckIn < this.activeIntervalMs) {
+            console.log('SmartPollingManager: User became active, rescheduling check sooner');
+            this._scheduleNextCheck(this.activeIntervalMs);
+          }
+        }
+      }
+
+      /**
+       * Check for updates using incremental update endpoint
+       * @param {number} lastUpdateTimestamp - Timestamp of last known update
+       * @returns {Promise} - Promise that resolves with update info
+       */
+      async checkForUpdates(lastUpdateTimestamp = null) {
+        if (!this.isActive) {
+          console.log('SmartPollingManager: Not active, skipping update check');
+          return null;
+        }
+
+        // Prevent concurrent update checks
+        if (this.isCheckingForUpdates) {
+          console.log('SmartPollingManager: Update check already in progress, skipping');
+          return null;
+        }
+
+        this.isCheckingForUpdates = true;
+        const now = Date.now();
+        this.stats.totalChecks++;
+        this.lastUpdateCheck = now;
+
+        console.log('SmartPollingManager: Checking for updates using optimized endpoint...');
+
+        return new Promise((resolve, reject) => {
+          // Use the optimized incremental update endpoint
+          if (typeof google !== 'undefined' && google.script && google.script.run.api_getStatusUpdatesOptimized) {
+            google.script.run
+              .withSuccessHandler((updateInfo) => {
+                const hasUpdates = updateInfo && updateInfo.success && updateInfo.hasUpdates;
+                
+                if (hasUpdates) {
+                  console.log('SmartPollingManager: Updates detected via optimized endpoint');
+                  console.log(`Changed students: ${updateInfo.changedStudents?.length || 0}`);
+                  this.stats.updatesFound++;
+                  this.stats.lastUpdateTime = now;
+                  this.consecutiveNoChanges = 0;
+                  
+                  // Update last update timestamp for next check
+                  this.lastUpdateTimestamp = updateInfo.timestamp || now;
+                  
+                  // Trigger update callback
+                  if (this.callbacks.onUpdate) {
+                    this.callbacks.onUpdate(updateInfo);
+                  }
+                } else {
+                  console.log('SmartPollingManager: No updates detected');
+                  this.consecutiveNoChanges++;
+                  
+                  // Update timestamp even if no changes
+                  if (updateInfo && updateInfo.timestamp) {
+                    this.lastUpdateTimestamp = updateInfo.timestamp;
+                  }
+                }
+                
+                // Schedule next check based on results
+                this._scheduleNextCheck();
+                this.isCheckingForUpdates = false; // Clear the flag
+                resolve(updateInfo);
+              })
+              .withFailureHandler((error) => {
+                console.warn('SmartPollingManager: Optimized update check failed:', error);
+                console.log('SmartPollingManager: Falling back to full refresh...');
+                
+                // Fallback: trigger a full refresh
+                if (this.callbacks.onUpdate) {
+                  this.callbacks.onUpdate({ hasUpdates: true, fallback: true, error: error.message });
+                }
+                
+                this.consecutiveNoChanges++;
+                
+                // Schedule next check with longer interval on error
+                this._scheduleNextCheck(this._getOptimalInterval() * 1.5);
+                this.isCheckingForUpdates = false; // Clear the flag
+                resolve({ hasUpdates: true, fallback: true, error: error.message });
+              })
+              .api_getStatusUpdatesOptimized(lastUpdateTimestamp || this.lastUpdateTimestamp || 0);
+          } else {
+            // Fallback: just trigger a regular update
+            console.log('SmartPollingManager: Optimized endpoint not available, using fallback update method');
+            if (this.callbacks.onUpdate) {
+              this.callbacks.onUpdate({ hasUpdates: true, fallback: true });
+            }
+            this._scheduleNextCheck();
+            this.isCheckingForUpdates = false; // Clear the flag
+            resolve({ hasUpdates: true, fallback: true });
+          }
+        });
+      }
+
+      /**
+       * Adjust polling frequency based on current conditions
+       * @param {Object} options - Options for frequency adjustment
+       */
+      adjustPollingFrequency(options = {}) {
+        const {
+          forceActive = false,
+          forceInactive = false,
+          customInterval = null
+        } = options;
+
+        let newInterval;
+
+        if (customInterval) {
+          newInterval = Math.max(customInterval, 10000); // Minimum 10 seconds
+        } else if (forceActive) {
+          newInterval = this.activeIntervalMs;
+        } else if (forceInactive) {
+          newInterval = this.inactiveIntervalMs;
+        } else {
+          newInterval = this._getOptimalInterval();
+        }
+
+        console.log(`SmartPollingManager: Adjusting frequency to ${newInterval}ms`);
+        
+        // Update average interval for stats
+        this.stats.averageInterval = (this.stats.averageInterval + newInterval) / 2;
+        
+        // Reschedule if currently active
+        if (this.isActive && this.currentInterval) {
+          this._scheduleNextCheck(newInterval);
+        }
+      }
+
+      /**
+       * Get current polling statistics
+       * @returns {Object} - Polling statistics
+       */
+      getStats() {
+        const now = Date.now();
+        const activityLevel = this._getActivityLevel();
+        const timeSinceLastActivity = now - this.lastUserActivity;
+        const timeSinceLastCheck = now - this.lastUpdateCheck;
+        
+        return {
+          isActive: this.isActive,
+          activityLevel: activityLevel,
+          timeSinceLastActivity: timeSinceLastActivity,
+          timeSinceLastCheck: timeSinceLastCheck,
+          totalChecks: this.stats.totalChecks,
+          updatesFound: this.stats.updatesFound,
+          updateRate: this.stats.totalChecks > 0 ? (this.stats.updatesFound / this.stats.totalChecks * 100).toFixed(1) + '%' : '0%',
+          consecutiveNoChanges: this.consecutiveNoChanges,
+          averageInterval: Math.round(this.stats.averageInterval),
+          lastUpdateTime: this.stats.lastUpdateTime,
+          nextCheckIn: this.currentInterval ? 'scheduled' : 'not scheduled'
+        };
+      }
+
+      /**
+       * Private method to determine optimal polling interval
+       * @returns {number} - Optimal interval in milliseconds
+       */
+      _getOptimalInterval() {
+        const activityLevel = this._getActivityLevel();
+        let interval;
+
+        switch (activityLevel) {
+          case 'active':
+            interval = this.activeIntervalMs;
+            break;
+          case 'inactive':
+            interval = this.inactiveIntervalMs;
+            break;
+          case 'dormant':
+            interval = this.maxIntervalMs;
+            break;
+          default:
+            interval = this.baseIntervalMs;
+        }
+
+        // Increase interval if we've had many consecutive no-change checks
+        if (this.consecutiveNoChanges >= this.maxConsecutiveNoChanges) {
+          interval = Math.min(interval * 2, this.maxIntervalMs);
+          console.log(`SmartPollingManager: Increasing interval due to ${this.consecutiveNoChanges} consecutive no-change checks`);
+        }
+
+        return interval;
+      }
+
+      /**
+       * Private method to determine current activity level
+       * @returns {string} - Activity level: 'active', 'inactive', or 'dormant'
+       */
+      _getActivityLevel() {
+        const timeSinceActivity = Date.now() - this.lastUserActivity;
+        
+        if (timeSinceActivity < this.activityThresholds.active) {
+          return 'active';
+        } else if (timeSinceActivity < this.activityThresholds.inactive) {
+          return 'inactive';
+        } else {
+          return 'dormant';
+        }
+      }
+
+      /**
+       * Private method to check if user is currently active
+       * @returns {boolean} - True if user is active
+       */
+      _isUserActive() {
+        return this._getActivityLevel() === 'active';
+      }
+
+      /**
+       * Private method to schedule the next update check
+       * @param {number} intervalMs - Interval in milliseconds (optional)
+       */
+      _scheduleNextCheck(intervalMs = null) {
+        if (this.currentInterval) {
+          clearTimeout(this.currentInterval);
+        }
+
+        const interval = intervalMs || this._getOptimalInterval();
+        
+        this.currentInterval = setTimeout(() => {
+          if (this.isActive) {
+            this.checkForUpdates();
+          }
+        }, interval);
+
+        console.log(`SmartPollingManager: Next check scheduled in ${interval}ms (${Math.round(interval/1000)}s)`);
+      }
+
+      /**
+       * Private method to set up activity monitoring
+       */
+      _setupActivityMonitoring() {
+        // Monitor various user interaction events
+        const events = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
+        
+        this._activityHandler = () => {
+          this.recordUserActivity();
+        };
+
+        // Throttle activity recording to avoid excessive calls
+        this._throttledActivityHandler = this._throttle(this._activityHandler, 5000); // 5 seconds
+
+        events.forEach(event => {
+          document.addEventListener(event, this._throttledActivityHandler, { passive: true });
+        });
+      }
+
+      /**
+       * Private method to clean up activity monitoring
+       */
+      _cleanupActivityMonitoring() {
+        if (this._throttledActivityHandler) {
+          const events = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
+          events.forEach(event => {
+            document.removeEventListener(event, this._throttledActivityHandler);
+          });
+        }
+      }
+
+      /**
+       * Private method to throttle function calls
+       * @param {Function} func - Function to throttle
+       * @param {number} limit - Throttle limit in milliseconds
+       * @returns {Function} - Throttled function
+       */
+      _throttle(func, limit) {
+        let inThrottle;
+        return function() {
+          const args = arguments;
+          const context = this;
+          if (!inThrottle) {
+            func.apply(context, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+          }
+        };
+      }
+    }
+
+    /**
+     * OptimisticUI class for immediate user feedback
+     * Handles optimistic updates with server confirmation and rollback on errors
+     */
+    class OptimisticUI {
+      constructor() {
+        this.pendingUpdates = new Map(); // Track pending optimistic updates
+        this.originalStates = new Map(); // Store original states for rollback
+      }
+
+      /**
+       * Update student status optimistically for immediate UI feedback
+       * @param {Object} student - Student object to update
+       * @param {string} action - Action being performed ('out' or 'back')
+       * @param {string} teacherName - Teacher name
+       * @param {Function} updateCallback - Callback to update UI immediately
+       * @returns {string} - Update ID for tracking
+       */
+      updateStudentStatusOptimistically(student, action, teacherName, updateCallback) {
+        const updateId = `${student.name}_${action}_${Date.now()}`;
+        
+        // Store original state for potential rollback
+        this.originalStates.set(updateId, {
+          outTime: student.outTime,
+          backTime: student.backTime,
+          holdNotice: student.holdNotice
+        });
+
+        // Create optimistic state
+        const optimisticState = { ...student };
+        const now = new Date();
+        const timeString = this._formatTimeToHHMM(now);
+
+        if (action === 'out') {
+          optimisticState.outTime = timeString;
+          optimisticState.holdNotice = ''; // Clear hold notice when going out
+          console.log(`OptimisticUI: Marking ${student.name} OUT optimistically at ${timeString}`);
+        } else if (action === 'back') {
+          optimisticState.backTime = timeString;
+          console.log(`OptimisticUI: Marking ${student.name} BACK optimistically at ${timeString}`);
+        }
+
+        // Track this pending update
+        this.pendingUpdates.set(updateId, {
+          studentName: student.name,
+          action: action,
+          teacherName: teacherName,
+          optimisticState: optimisticState,
+          timestamp: Date.now()
+        });
+
+        // Apply optimistic update to UI immediately
+        if (updateCallback) {
+          updateCallback(optimisticState);
+        }
+
+        console.log(`OptimisticUI: Applied optimistic update ${updateId}`);
+        return updateId;
+      }
+
+      /**
+       * Confirm server update and clean up optimistic state
+       * @param {string} updateId - Update ID from optimistic update
+       * @param {Object} serverState - Confirmed state from server
+       * @param {Function} updateCallback - Callback to update UI with server state
+       */
+      confirmServerUpdate(updateId, serverState, updateCallback) {
+        const pendingUpdate = this.pendingUpdates.get(updateId);
+        
+        if (!pendingUpdate) {
+          console.warn(`OptimisticUI: No pending update found for ID ${updateId}`);
+          return;
+        }
+
+        console.log(`OptimisticUI: Confirming server update ${updateId}`);
+
+        // Merge server state with any additional server-provided data
+        if (updateCallback && serverState) {
+          updateCallback(serverState);
+        }
+
+        // Clean up tracking
+        this.pendingUpdates.delete(updateId);
+        this.originalStates.delete(updateId);
+
+        console.log(`OptimisticUI: Server update confirmed and cleaned up ${updateId}`);
+      }
+
+      /**
+       * Revert optimistic update on server error
+       * @param {string} updateId - Update ID from optimistic update
+       * @param {Function} revertCallback - Callback to revert UI to original state
+       * @param {string} errorMessage - Error message for logging
+       */
+      revertOnError(updateId, revertCallback, errorMessage = 'Server update failed') {
+        const pendingUpdate = this.pendingUpdates.get(updateId);
+        const originalState = this.originalStates.get(updateId);
+        
+        if (!pendingUpdate || !originalState) {
+          console.warn(`OptimisticUI: Cannot revert - no data found for ID ${updateId}`);
+          return;
+        }
+
+        console.log(`OptimisticUI: Reverting optimistic update ${updateId} due to: ${errorMessage}`);
+
+        // Revert to original state
+        if (revertCallback) {
+          revertCallback(originalState);
+        }
+
+        // Clean up tracking
+        this.pendingUpdates.delete(updateId);
+        this.originalStates.delete(updateId);
+
+        console.log(`OptimisticUI: Reverted update ${updateId} to original state`);
+      }
+
+      /**
+       * Get all pending updates (for debugging or status display)
+       * @returns {Array} - Array of pending update info
+       */
+      getPendingUpdates() {
+        return Array.from(this.pendingUpdates.values()).map(update => ({
+          studentName: update.studentName,
+          action: update.action,
+          timestamp: update.timestamp,
+          age: Date.now() - update.timestamp
+        }));
+      }
+
+      /**
+       * Clean up old pending updates (in case server never responds)
+       * @param {number} maxAgeMs - Maximum age in milliseconds (default: 30 seconds)
+       */
+      cleanupOldUpdates(maxAgeMs = 30000) {
+        const now = Date.now();
+        const toRemove = [];
+
+        for (const [updateId, update] of this.pendingUpdates.entries()) {
+          if (now - update.timestamp > maxAgeMs) {
+            toRemove.push(updateId);
+          }
+        }
+
+        toRemove.forEach(updateId => {
+          console.warn(`OptimisticUI: Cleaning up old pending update ${updateId}`);
+          this.pendingUpdates.delete(updateId);
+          this.originalStates.delete(updateId);
+        });
+
+        return toRemove.length;
+      }
+
+      /**
+       * Check if a student has pending updates
+       * @param {string} studentName - Name of student to check
+       * @returns {boolean} - True if student has pending updates
+       */
+      hasPendingUpdates(studentName) {
+        for (const update of this.pendingUpdates.values()) {
+          if (update.studentName === studentName) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      /**
+       * Get pending update info for a specific student
+       * @param {string} studentName - Name of student
+       * @returns {Object|null} - Pending update info or null
+       */
+      getPendingUpdateForStudent(studentName) {
+        for (const [updateId, update] of this.pendingUpdates.entries()) {
+          if (update.studentName === studentName) {
+            return {
+              updateId: updateId,
+              action: update.action,
+              timestamp: update.timestamp,
+              age: Date.now() - update.timestamp
+            };
+          }
+        }
+        return null;
+      }
+
+      /**
+       * Clear all pending updates (use with caution)
+       */
+      clearAllPending() {
+        const count = this.pendingUpdates.size;
+        this.pendingUpdates.clear();
+        this.originalStates.clear();
+        console.log(`OptimisticUI: Cleared ${count} pending updates`);
+        return count;
+      }
+
+      /**
+       * Private method to format time consistently
+       * @param {Date} date - Date object to format
+       * @returns {string} - Formatted time string
+       */
+      _formatTimeToHHMM(date) {
+        let hours = date.getHours();
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+
+        return `${hours}:${minutes} ${ampm}`;
+      }
+    }
+
+    /**
+     * LocalDataCache class for browser-side caching
+     * Implements localStorage-based caching with versioning and expiration
+     */
+    class LocalDataCache {
+      constructor() {
+        this.CACHE_PREFIX = 'nams_restroom_';
+        this.VERSION = '1.0';
+        this.DEFAULT_TTL_MINUTES = 60; // 1 hour default
+        this.MAX_CACHE_SIZE = 4 * 1024 * 1024; // 4MB limit for localStorage
+      }
+
+      /**
+       * Store data in localStorage with TTL and versioning
+       * @param {string} key - Cache key
+       * @param {any} data - Data to cache
+       * @param {number} ttlMinutes - Time to live in minutes
+       * @returns {boolean} - Success status
+       */
+      set(key, data, ttlMinutes = this.DEFAULT_TTL_MINUTES) {
+        try {
+          const cacheEntry = {
+            data: data,
+            timestamp: Date.now(),
+            expiresAt: Date.now() + (ttlMinutes * 60 * 1000),
+            version: this.VERSION
+          };
+
+          const serializedData = JSON.stringify(cacheEntry);
+          const fullKey = this.CACHE_PREFIX + key;
+
+          // Check cache size before storing
+          if (this._wouldExceedCacheLimit(serializedData)) {
+            console.warn('Cache size limit would be exceeded, cleaning up old entries');
+            this._cleanupOldEntries();
+            
+            // Check again after cleanup
+            if (this._wouldExceedCacheLimit(serializedData)) {
+              console.warn('Cannot cache data - would exceed size limit even after cleanup');
+              return false;
+            }
+          }
+
+          localStorage.setItem(fullKey, serializedData);
+          console.log(`LocalCache SET: "${key}" with TTL ${ttlMinutes} minutes`);
+          return true;
+
+        } catch (error) {
+          console.error(`Error setting local cache key "${key}":`, error);
+          // Handle quota exceeded error
+          if (error.name === 'QuotaExceededError') {
+            this._handleQuotaExceeded();
+          }
+          return false;
+        }
+      }
+
+      /**
+       * Retrieve data from localStorage with TTL validation
+       * @param {string} key - Cache key
+       * @returns {any|null} - Cached data or null if not found/expired
+       */
+      get(key) {
+        try {
+          const fullKey = this.CACHE_PREFIX + key;
+          const serializedData = localStorage.getItem(fullKey);
+
+          if (!serializedData) {
+            console.log(`LocalCache MISS: "${key}" - not found`);
+            return null;
+          }
+
+          const cacheEntry = JSON.parse(serializedData);
+
+          // Check version compatibility
+          if (cacheEntry.version !== this.VERSION) {
+            console.log(`LocalCache MISS: "${key}" - version mismatch`);
+            this.invalidate(key);
+            return null;
+          }
+
+          // Check if expired
+          if (Date.now() > cacheEntry.expiresAt) {
+            console.log(`LocalCache MISS: "${key}" - expired`);
+            this.invalidate(key);
+            return null;
+          }
+
+          console.log(`LocalCache HIT: "${key}"`);
+          return cacheEntry.data;
+
+        } catch (error) {
+          console.error(`Error getting local cache key "${key}":`, error);
+          return null;
+        }
+      }
+
+      /**
+       * Check if cache entry exists and is valid
+       * @param {string} key - Cache key
+       * @returns {boolean} - True if valid
+       */
+      isValid(key) {
+        try {
+          const fullKey = this.CACHE_PREFIX + key;
+          const serializedData = localStorage.getItem(fullKey);
+
+          if (!serializedData) return false;
+
+          const cacheEntry = JSON.parse(serializedData);
+          return cacheEntry.version === this.VERSION && Date.now() <= cacheEntry.expiresAt;
+
+        } catch (error) {
+          return false;
+        }
+      }
+
+      /**
+       * Remove specific cache entry
+       * @param {string} key - Cache key to remove
+       */
+      invalidate(key) {
+        try {
+          const fullKey = this.CACHE_PREFIX + key;
+          localStorage.removeItem(fullKey);
+          console.log(`LocalCache INVALIDATED: "${key}"`);
+        } catch (error) {
+          console.error(`Error invalidating local cache key "${key}":`, error);
+        }
+      }
+
+      /**
+       * Clear all cache entries for this app
+       */
+      clearAll() {
+        try {
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(this.CACHE_PREFIX)) {
+              keysToRemove.push(key);
+            }
+          }
+
+          keysToRemove.forEach(key => localStorage.removeItem(key));
+          console.log(`LocalCache cleared ${keysToRemove.length} entries`);
+
+        } catch (error) {
+          console.error('Error clearing local cache:', error);
+        }
+      }
+
+      /**
+       * Get cache statistics and info
+       * @returns {Object} - Cache statistics
+       */
+      getStats() {
+        try {
+          let totalSize = 0;
+          let entryCount = 0;
+          let expiredCount = 0;
+          const now = Date.now();
+
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(this.CACHE_PREFIX)) {
+              entryCount++;
+              const data = localStorage.getItem(key);
+              if (data) {
+                totalSize += data.length;
+                
+                try {
+                  const cacheEntry = JSON.parse(data);
+                  if (now > cacheEntry.expiresAt) {
+                    expiredCount++;
+                  }
+                } catch (e) {
+                  expiredCount++; // Count parse errors as expired
+                }
+              }
+            }
+          }
+
+          return {
+            entryCount,
+            expiredCount,
+            totalSizeBytes: totalSize,
+            totalSizeKB: Math.round(totalSize / 1024),
+            maxSizeKB: Math.round(this.MAX_CACHE_SIZE / 1024),
+            usagePercent: Math.round((totalSize / this.MAX_CACHE_SIZE) * 100)
+          };
+
+        } catch (error) {
+          console.error('Error getting cache stats:', error);
+          return { error: error.message };
+        }
+      }
+
+      /**
+       * Clean up expired entries
+       */
+      cleanupExpired() {
+        try {
+          const keysToRemove = [];
+          const now = Date.now();
+
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(this.CACHE_PREFIX)) {
+              const data = localStorage.getItem(key);
+              if (data) {
+                try {
+                  const cacheEntry = JSON.parse(data);
+                  if (now > cacheEntry.expiresAt || cacheEntry.version !== this.VERSION) {
+                    keysToRemove.push(key);
+                  }
+                } catch (e) {
+                  keysToRemove.push(key); // Remove unparseable entries
+                }
+              }
+            }
+          }
+
+          keysToRemove.forEach(key => localStorage.removeItem(key));
+          
+          if (keysToRemove.length > 0) {
+            console.log(`LocalCache cleaned up ${keysToRemove.length} expired entries`);
+          }
+
+          return keysToRemove.length;
+
+        } catch (error) {
+          console.error('Error cleaning up expired cache entries:', error);
+          return 0;
+        }
+      }
+
+      /**
+       * Private method to check if adding data would exceed cache limit
+       * @param {string} serializedData - Data to be added
+       * @returns {boolean} - True if would exceed limit
+       */
+      _wouldExceedCacheLimit(serializedData) {
+        try {
+          const stats = this.getStats();
+          const newDataSize = serializedData.length;
+          return (stats.totalSizeBytes + newDataSize) > this.MAX_CACHE_SIZE;
+        } catch (error) {
+          return false; // Assume it's okay if we can't calculate
+        }
+      }
+
+      /**
+       * Private method to clean up old entries when approaching size limit
+       */
+      _cleanupOldEntries() {
+        try {
+          const entries = [];
+          
+          // Collect all cache entries with timestamps
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(this.CACHE_PREFIX)) {
+              const data = localStorage.getItem(key);
+              if (data) {
+                try {
+                  const cacheEntry = JSON.parse(data);
+                  entries.push({
+                    key: key,
+                    timestamp: cacheEntry.timestamp,
+                    size: data.length
+                  });
+                } catch (e) {
+                  // Remove unparseable entries immediately
+                  localStorage.removeItem(key);
+                }
+              }
+            }
+          }
+
+          // Sort by timestamp (oldest first) and remove oldest 25%
+          entries.sort((a, b) => a.timestamp - b.timestamp);
+          const toRemove = Math.ceil(entries.length * 0.25);
+          
+          for (let i = 0; i < toRemove; i++) {
+            localStorage.removeItem(entries[i].key);
+          }
+
+          console.log(`LocalCache removed ${toRemove} old entries to free space`);
+
+        } catch (error) {
+          console.error('Error cleaning up old cache entries:', error);
+        }
+      }
+
+      /**
+       * Private method to handle quota exceeded errors
+       */
+      _handleQuotaExceeded() {
+        console.warn('LocalStorage quota exceeded, attempting cleanup');
+        
+        // First try cleaning expired entries
+        const expiredCleaned = this.cleanupExpired();
+        
+        // If that's not enough, clean up old entries
+        if (expiredCleaned === 0) {
+          this._cleanupOldEntries();
+        }
+      }
+    }
+
     function appData() {
       return {
         dateString: "",
@@ -590,15 +1523,65 @@
         lastActionTime: 0,
         lastUpdateTimestamp: 0,
         refreshInterval: null,
+        
+        // Initialize LocalDataCache instance
+        localCache: new LocalDataCache(),
+        
+        // Initialize OptimisticUI instance
+        optimisticUI: new OptimisticUI(),
+        
+        // Initialize SmartPollingManager instance
+        smartPolling: new SmartPollingManager(),
 
         init() {
           this.loadUserInfo();
+          
           // Update period every minute
           setInterval(() => {
             const now = new Date();
             this.periodString = this.getCurrentPeriod(now);
             this.nextPeriodString = this.getNextPeriod(now);
           }, 60000);
+          
+          // Clean up old optimistic updates every 30 seconds
+          setInterval(() => {
+            const cleaned = this.optimisticUI.cleanupOldUpdates(30000); // 30 seconds
+            if (cleaned > 0) {
+              console.log(`Cleaned up ${cleaned} old optimistic updates`);
+            }
+          }, 30000);
+          
+          // Clean up expired cache entries every 5 minutes
+          setInterval(() => {
+            const cleaned = this.localCache.cleanupExpired();
+            if (cleaned > 0) {
+              console.log(`Cleaned up ${cleaned} expired cache entries`);
+            }
+          }, 300000);
+          
+          // Log performance stats every 10 minutes for monitoring
+          setInterval(() => {
+            this._logPerformanceReport();
+          }, 600000); // 10 minutes
+          
+          // Also log performance stats every 2 minutes during active usage
+          setInterval(() => {
+            const pollingStats = this.smartPolling.getStats();
+            if (pollingStats.activityLevel === 'active') {
+              this._logPerformanceReport(true);
+            }
+          }, 120000); // 2 minutes
+        },
+        
+        // Method to get comprehensive performance stats
+        getPerformanceStats() {
+          return {
+            polling: this.smartPolling.getStats(),
+            cache: this.localCache.getStats(),
+            optimisticUpdates: this.optimisticUI.getPendingUpdates(),
+            lastUpdateTimestamp: this.lastUpdateTimestamp,
+            lastActionTime: this.lastActionTime
+          };
         },
 
         // Bell Schedule Configuration
@@ -736,6 +1719,31 @@
 
         loadUserInfo() {
           console.log('Loading user information...');
+          
+          // Try to get cached user info first
+          const cachedUserInfo = this.localCache.get('userInfo');
+          const cachedTeachers = this.localCache.get('teacherList');
+          
+          if (cachedUserInfo && cachedTeachers) {
+            console.log('Using cached user info and teacher list');
+            this.userEmail = cachedUserInfo.userEmail;
+            this.detectedTeacher = cachedUserInfo.detectedTeacher;
+            this.teachers = cachedTeachers;
+            
+            this._initializeDateAndPeriod();
+            this.refreshData();
+            this.startSmartRefresh();
+            
+            // Still fetch fresh data in background to update cache
+            this._fetchUserInfoInBackground();
+            return;
+          }
+          
+          // No cache available, fetch from server
+          this._fetchUserInfoFromServer();
+        },
+        
+        _fetchUserInfoFromServer() {
           google.script.run
             .withSuccessHandler((userInfo) => {
               console.log('User info received:', userInfo);
@@ -743,51 +1751,86 @@
               this.detectedTeacher = userInfo.detectedTeacher;
               this.teachers = userInfo.teacherList;
 
-              // Initialize date and period
-              const now = new Date();
-              this.dateString = now.toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              });
-              this.periodString = this.getCurrentPeriod(now);
-              this.nextPeriodString = this.getNextPeriod(now);
+              // Cache the user info and teacher list
+              this.localCache.set('userInfo', {
+                userEmail: userInfo.userEmail,
+                detectedTeacher: userInfo.detectedTeacher
+              }, 1440); // Cache for 24 hours
+              
+              this.localCache.set('teacherList', userInfo.teacherList, 1440); // Cache for 24 hours
 
-              // Now load the student data
+              this._initializeDateAndPeriod();
               this.refreshData();
-              // Start smart refresh system instead of constant polling
               this.startSmartRefresh();
             })
             .withFailureHandler((error) => {
               console.error('Error loading user info:', error);
-              // Use fallback teacher list
-              this.teachers = [
-                "Mr. Aguilar", "Mrs. Atoui", "Mrs. Bowery", "Mrs. Cantu", "Mr. Casanova",
-                "Mrs. Coyle", "Mr. De Leon", "Mrs. Farias", "Mr. Franco", "Mr. Garcia",
-                "Mr. Goff", "Mr. Gomez", "Dr. Gonzales", "Mr. Hernandez", "Mrs. Hutton",
-                "Mrs. Idrogo", "Mrs. Jasso", "Mrs. Marquez", "Mr. Ollendieck", "Mr. Paez",
-                "Mr. Ramon", "Mrs. Tellez", "Mr. Trevino", "Mrs. Wine", "Mrs. Yeager",
-                "Other Teacher"
-              ];
-              this.detectedTeacher = "Other Teacher";
-
-              // Initialize date and period
-              const now = new Date();
-              this.dateString = now.toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              });
-              this.periodString = this.getCurrentPeriod(now);
-              this.nextPeriodString = this.getNextPeriod(now);
-
-              // Load student data even if user info fails
-              this.refreshData();
-              this.startSmartRefresh();
+              this._useFallbackUserInfo();
             })
             .api_getCurrentUserInfo();
+        },
+        
+        _fetchUserInfoInBackground() {
+          // Silently fetch fresh user info to update cache
+          google.script.run
+            .withSuccessHandler((userInfo) => {
+              console.log('Background user info update received');
+              // Update cache with fresh data
+              this.localCache.set('userInfo', {
+                userEmail: userInfo.userEmail,
+                detectedTeacher: userInfo.detectedTeacher
+              }, 1440);
+              
+              this.localCache.set('teacherList', userInfo.teacherList, 1440);
+              
+              // Update current data if significantly different
+              if (userInfo.detectedTeacher !== this.detectedTeacher) {
+                this.detectedTeacher = userInfo.detectedTeacher;
+                console.log('Updated detected teacher from background fetch');
+              }
+            })
+            .withFailureHandler((error) => {
+              console.log('Background user info fetch failed (not critical):', error);
+            })
+            .api_getCurrentUserInfo();
+        },
+        
+        _useFallbackUserInfo() {
+          // Use fallback teacher list
+          const fallbackTeachers = [
+            "Mr. Aguilar", "Mrs. Atoui", "Mrs. Bowery", "Mrs. Cantu", "Mr. Casanova",
+            "Mrs. Coyle", "Mr. De Leon", "Mrs. Farias", "Mr. Franco", "Mr. Garcia",
+            "Mr. Goff", "Mr. Gomez", "Dr. Gonzales", "Mr. Hernandez", "Mrs. Hutton",
+            "Mrs. Idrogo", "Mrs. Jasso", "Mrs. Marquez", "Mr. Ollendieck", "Mr. Paez",
+            "Mr. Ramon", "Mrs. Tellez", "Mr. Trevino", "Mrs. Wine", "Mrs. Yeager",
+            "Other Teacher"
+          ];
+          
+          this.teachers = fallbackTeachers;
+          this.detectedTeacher = "Other Teacher";
+          
+          // Cache fallback data
+          this.localCache.set('teacherList', fallbackTeachers, 60); // Cache for 1 hour only
+          this.localCache.set('userInfo', {
+            userEmail: '',
+            detectedTeacher: 'Other Teacher'
+          }, 60);
+
+          this._initializeDateAndPeriod();
+          this.refreshData();
+          this.startSmartRefresh();
+        },
+        
+        _initializeDateAndPeriod() {
+          const now = new Date();
+          this.dateString = now.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          });
+          this.periodString = this.getCurrentPeriod(now);
+          this.nextPeriodString = this.getNextPeriod(now);
         },
 
 
@@ -902,82 +1945,612 @@
         },
 
         refreshData() {
-          console.log('refreshData() called - trying Script Properties implementation');
+          console.log('refreshData() called - loading fresh data for accurate status');
+          
+          // For initial load, always get fresh data to ensure log status is current
+          // This prevents the "blue button" problem where cached data lacks log info
+          this.isLoading = true;
+          this.loadingMessage = "Loading current student status...";
+          this.loadStartTime = Date.now();
+          
+          google.script.run
+            .withSuccessHandler(response => {
+              const responseTime = Date.now() - this.loadStartTime;
+              console.log('✓ Initial fresh data loaded successfully:', response);
+              console.log(`📊 Initial load response time: ${responseTime}ms`);
+              
+              if (response && response.success && response.data && response.data.students) {
+                console.log(`Fresh load: ${response.metadata.freshLoad}, Students: ${response.metadata.studentCount}`);
+                this._handleStudentDataSuccess(response.data);
+                
+                // Start smart polling after successful initial load
+                this.startSmartRefresh();
+              } else {
+                console.warn('Fresh data endpoint failed on initial load, falling back to cached endpoint');
+                this.loadingMessage = "Trying cached data...";
+                this._fetchStudentDataFromServer();
+              }
+            })
+            .withFailureHandler(error => {
+              const responseTime = Date.now() - this.loadStartTime;
+              console.error('Fresh data endpoint failed on initial load:', error);
+              console.log(`📊 Failed initial load response time: ${responseTime}ms`);
+              console.log('Falling back to cached endpoint...');
+              this.loadingMessage = "Trying cached data...";
+              this._fetchStudentDataFromServer();
+            })
+            .api_getFreshStudentData();
+        },
+        
+        _fetchStudentDataFromServer() {
+          console.log('Fetching student data from server with optimized cached loading');
           this.isLoading = true;
           this.loadingMessage = "Loading student data...";
+          this.loadStartTime = Date.now(); // Track load start time
 
-          // First try the new Script Properties function
+          // Use the optimized cached data endpoint first
           google.script.run
-            .withSuccessHandler(data => {
-              console.log('✓ Script Properties data loaded successfully:', data);
-              if (data && data.students) {
-                this.students = data.students;
-                this.queue = data.queue || { girls: [], boys: [] };
-                this.isLoading = false;
-                this.loadingMessage = "";
-                this.lastUpdateTimestamp = Date.now(); // Record successful refresh
-                console.log('✓ Script Properties data applied successfully');
+            .withSuccessHandler(response => {
+              const responseTime = Date.now() - this.loadStartTime;
+              console.log('✓ Cached student data loaded successfully:', response);
+              console.log(`📊 Server response time: ${responseTime}ms`);
+              
+              if (response && response.success && response.data && response.data.students) {
+                console.log(`Cache used: ${response.metadata.cacheUsed}, Students: ${response.metadata.studentCount}`);
+                
+                // Log cache hit/miss
+                if (response.metadata.cacheUsed) {
+                  console.log('📊 Cache HIT - Data served from server cache');
+                } else {
+                  console.log('📊 Cache MISS - Data loaded fresh from sheets');
+                }
+                
+                this._handleStudentDataSuccess(response.data);
+              } else if (response && !response.success) {
+                console.warn('Cached endpoint failed, falling back...', response.error);
+                this.loadingMessage = "Trying fallback method...";
+                this.fallbackToMinimalBypass();
               } else {
-                console.warn('Script Properties returned null, falling back...');
+                console.warn('Cached endpoint returned invalid data, falling back...');
                 this.loadingMessage = "Trying fallback method...";
                 this.fallbackToMinimalBypass();
               }
             })
             .withFailureHandler(error => {
-              console.error('Script Properties failed:', error);
+              const responseTime = Date.now() - this.loadStartTime;
+              console.error('Cached endpoint failed:', error);
+              console.log(`📊 Failed response time: ${responseTime}ms`);
               this.loadingMessage = "Trying fallback method...";
               this.fallbackToMinimalBypass();
             })
-            .api_loadWithScriptProperties();
+            .api_getCachedStudentData();
         },
-
-        // Smart refresh system - only refresh when there are actual changes
-        startSmartRefresh() {
-          console.log('Starting smart refresh system...');
-          // Check for updates every 60 seconds instead of constant refreshing
-          // This reduces server load while keeping data reasonably fresh
-          this.refreshInterval = setInterval(() => {
-            // Only refresh if no recent user activity
-            const timeSinceLastAction = Date.now() - (this.lastActionTime || 0);
-            if (timeSinceLastAction > 45000) { // 45 seconds since last action
-              console.log('Smart refresh: Checking for updates...');
-              this.checkForUpdates();
-            } else {
-              console.log('Smart refresh: Skipping check due to recent activity');
-            }
-          }, 60000); // Check every 60 seconds
-        },
-
-        // Check if there are any updates without doing a full refresh
-        checkForUpdates() {
+        
+        _fetchStudentDataInBackground() {
+          console.log('Fetching fresh student data in background using optimized endpoint');
+          
+          // Fetch fresh data without loading indicator using optimized cached endpoint
           google.script.run
-            .withSuccessHandler((updateInfo) => {
-              console.log('Update check response:', updateInfo);
-              if (updateInfo && updateInfo.hasUpdates) {
-                console.log('Updates detected, refreshing data...');
-                this.lastUpdateTimestamp = updateInfo.timestamp || Date.now();
-                this.refreshData();
+            .withSuccessHandler(response => {
+              console.log('Background student data update received');
+              
+              if (response && response.success && response.data && response.data.students) {
+                const data = response.data;
+                
+                // Check if data has actually changed before updating UI
+                const hasChanges = this._hasStudentDataChanged(data);
+                
+                if (hasChanges) {
+                  console.log('Student data changes detected, updating UI');
+                  this._handleStudentDataSuccess(data, false); // false = no loading indicator
+                } else {
+                  console.log('No student data changes detected');
+                  // Still update cache with fresh timestamp
+                  this.localCache.set('studentData', data, 30); // 30 minutes cache
+                }
               } else {
-                console.log('No updates detected, keeping current data');
-                // Update timestamp even if no changes to avoid redundant checks
-                this.lastUpdateTimestamp = updateInfo?.timestamp || Date.now();
+                console.log('Background fetch returned invalid data (not critical):', response);
               }
             })
-            .withFailureHandler((error) => {
-              console.warn('Update check failed:', error);
-              // Fallback to regular refresh on error, but less frequently
-              if (Date.now() - (this.lastUpdateTimestamp || 0) > 300000) { // 5 minutes
-                console.log('Fallback refresh due to failed update check');
-                this.refreshData();
-              }
+            .withFailureHandler(error => {
+              console.log('Background student data fetch failed (not critical):', error);
             })
-            .api_hasUpdatesAvailable(this.lastUpdateTimestamp || 0);
+            .api_getCachedStudentData();
+        },
+        
+        _handleStudentDataSuccess(data, showLoading = true) {
+          const startTime = this.loadStartTime || Date.now();
+          const loadTime = Date.now() - startTime;
+          
+          this.students = data.students;
+          this.queue = data.queue || { girls: [], boys: [] };
+          
+          // Cache the student data
+          this.localCache.set('studentData', data, 30); // Cache for 30 minutes
+          
+          if (showLoading) {
+            this.isLoading = false;
+            this.loadingMessage = "";
+          }
+          
+          this.lastUpdateTimestamp = Date.now();
+          
+          // Performance monitoring and validation
+          console.log('✓ Student data applied successfully');
+          console.log(`📊 Load time: ${loadTime}ms`);
+          
+          // Validate performance targets
+          this._validatePerformanceTargets(loadTime, showLoading);
+          
+          // Log cache statistics
+          this._logCacheStatistics();
+        },
+        
+        // Validate that performance targets are met
+        _validatePerformanceTargets(loadTime, isInitialLoad) {
+          const targetInitialLoad = 3000; // 3 seconds for initial load
+          const targetUpdate = 1000; // 1 second for updates
+          
+          const target = isInitialLoad ? targetInitialLoad : targetUpdate;
+          const targetType = isInitialLoad ? 'initial load' : 'update';
+          
+          if (loadTime <= target) {
+            console.log(`✅ Performance target met: ${targetType} completed in ${loadTime}ms (target: ${target}ms)`);
+          } else {
+            console.warn(`⚠️ Performance target missed: ${targetType} took ${loadTime}ms (target: ${target}ms)`);
+          }
+          
+          // Store performance metrics for monitoring
+          if (!this.performanceMetrics) {
+            this.performanceMetrics = {
+              loadTimes: [],
+              updateTimes: [],
+              targetsMet: 0,
+              targetsMissed: 0
+            };
+          }
+          
+          if (isInitialLoad) {
+            this.performanceMetrics.loadTimes.push(loadTime);
+          } else {
+            this.performanceMetrics.updateTimes.push(loadTime);
+          }
+          
+          if (loadTime <= target) {
+            this.performanceMetrics.targetsMet++;
+          } else {
+            this.performanceMetrics.targetsMissed++;
+          }
+        },
+        
+        // Log cache statistics for monitoring
+        _logCacheStatistics() {
+          const cacheStats = this.localCache.getStats();
+          const pollingStats = this.smartPolling.getStats();
+          
+          console.log('📊 Cache Statistics:', {
+            hitRate: cacheStats.entryCount > 0 ? `${Math.round((cacheStats.entryCount - cacheStats.expiredCount) / cacheStats.entryCount * 100)}%` : '0%',
+            size: `${cacheStats.totalSizeKB}KB`,
+            usage: `${cacheStats.usagePercent}%`,
+            entries: cacheStats.entryCount,
+            expired: cacheStats.expiredCount
+          });
+          
+          console.log('📊 Polling Statistics:', {
+            activityLevel: pollingStats.activityLevel,
+            updateRate: pollingStats.updateRate,
+            totalChecks: pollingStats.totalChecks,
+            updatesFound: pollingStats.updatesFound,
+            averageInterval: `${Math.round(pollingStats.averageInterval/1000)}s`
+          });
+        },
+        
+        _hasStudentDataChanged(newData) {
+          // Simple comparison - check if student count or queue lengths changed
+          if (!this.students || this.students.length !== newData.students.length) {
+            return true;
+          }
+          
+          if (!this.queue || 
+              this.queue.girls.length !== (newData.queue?.girls?.length || 0) ||
+              this.queue.boys.length !== (newData.queue?.boys?.length || 0)) {
+            return true;
+          }
+          
+          // Check for status changes in first few students (most likely to change)
+          for (let i = 0; i < Math.min(5, this.students.length); i++) {
+            const current = this.students[i];
+            const updated = newData.students[i];
+            
+            if (current && updated && 
+                (current.outTime !== updated.outTime || 
+                 current.backTime !== updated.backTime ||
+                 current.holdNotice !== updated.holdNotice)) {
+              return true;
+            }
+          }
+          
+          return false;
         },
 
-        // Track user actions to avoid unnecessary refreshes
+        // Start smart refresh system using SmartPollingManager
+        startSmartRefresh() {
+          console.log('Starting smart refresh system with SmartPollingManager...');
+          
+          // Initialize last update timestamp
+          this.lastUpdateTimestamp = Date.now();
+          
+          // Start adaptive polling with update callback
+          this.smartPolling.startAdaptivePolling(
+            (updateInfo) => {
+              // Update callback - called when updates are detected
+              console.log('SmartPolling detected updates:', updateInfo);
+              
+              if (updateInfo.fallback) {
+                // Fallback mode - do full refresh
+                console.log('Using fallback mode - performing full refresh...');
+                this.lastUpdateTimestamp = updateInfo.timestamp || Date.now();
+                this._fetchStudentDataInBackground();
+              } else if (updateInfo && updateInfo.success && updateInfo.hasUpdates) {
+                // Incremental updates available
+                console.log('Processing incremental updates...');
+                this._handleIncrementalUpdates(updateInfo);
+                this.lastUpdateTimestamp = updateInfo.timestamp || Date.now();
+              } else if (updateInfo && updateInfo.success && !updateInfo.hasUpdates) {
+                // No updates, just update timestamp
+                console.log('No updates detected, keeping current data');
+                this.lastUpdateTimestamp = updateInfo.timestamp || Date.now();
+              } else {
+                // Unknown response, do full refresh to be safe
+                console.log('Unknown update response, performing full refresh...');
+                this.lastUpdateTimestamp = Date.now();
+                this._fetchStudentDataInBackground();
+              }
+            },
+            (activityLevel) => {
+              // Activity level change callback
+              console.log(`User activity level changed to: ${activityLevel}`);
+            }
+          );
+        },
+        
+        // Handle incremental updates from the optimized endpoint
+        _handleIncrementalUpdates(updateInfo) {
+          console.log('Handling incremental updates:', updateInfo);
+          
+          if (!updateInfo.updates || !updateInfo.changedStudents) {
+            console.log('No specific update data, falling back to full refresh');
+            this._fetchStudentDataInBackground();
+            return;
+          }
+          
+          let hasChanges = false;
+          
+          // Update specific students that have changed
+          updateInfo.changedStudents.forEach(studentName => {
+            const studentUpdate = updateInfo.updates[studentName];
+            if (!studentUpdate) return;
+            
+            const studentIndex = this.students.findIndex(s => s.name === studentName);
+            if (studentIndex !== -1) {
+              const currentStudent = this.students[studentIndex];
+              
+              // Check if there are actual changes
+              if (currentStudent.outTime !== studentUpdate.outTime ||
+                  currentStudent.backTime !== studentUpdate.backTime ||
+                  currentStudent.holdNotice !== studentUpdate.holdNotice ||
+                  currentStudent.gender !== studentUpdate.gender ||
+                  currentStudent.teacher !== studentUpdate.teacher) {
+                
+                // Apply the update
+                this.students[studentIndex] = {
+                  ...currentStudent,
+                  gender: studentUpdate.gender || currentStudent.gender,
+                  teacher: studentUpdate.teacher || currentStudent.teacher,
+                  outTime: studentUpdate.outTime || "",
+                  backTime: studentUpdate.backTime || "",
+                  holdNotice: studentUpdate.holdNotice || ""
+                };
+                
+                hasChanges = true;
+                console.log(`Updated student ${studentName} incrementally`);
+              }
+            }
+          });
+          
+          if (hasChanges) {
+            // Rebuild queue based on updated student data
+            this._rebuildQueue();
+            
+            // Update local cache with new data
+            this.localCache.set('studentData', {
+              students: this.students,
+              queue: this.queue
+            }, 30);
+            
+            console.log('Incremental updates applied successfully');
+          } else {
+            console.log('No actual changes detected in incremental update');
+          }
+        },
+        
+        // Rebuild queue from current student data
+        _rebuildQueue() {
+          const newQueue = { girls: [], boys: [] };
+          
+          this.students.forEach(student => {
+            // Add to queue if waiting (has hold notice but no out time)
+            if (student.holdNotice && !student.outTime) {
+              if (student.gender === "G") {
+                newQueue.girls.push(student.name);
+              } else if (student.gender === "B") {
+                newQueue.boys.push(student.name);
+              }
+            }
+          });
+          
+          this.queue = newQueue;
+          console.log('Queue rebuilt:', this.queue);
+        },
+
+        // Stop smart refresh system
+        stopSmartRefresh() {
+          console.log('Stopping smart refresh system...');
+          if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+            this.refreshInterval = null;
+          }
+          this.smartPolling.stopPolling();
+        },
+
+        // Track user actions and notify SmartPollingManager
         recordUserAction() {
           this.lastActionTime = Date.now();
-          console.log('User action recorded');
+          this.smartPolling.recordUserActivity();
+          console.log('User action recorded and reported to SmartPollingManager');
+        },
+        
+        // Manual refresh triggered by user
+        manualRefresh() {
+          console.log('Manual refresh triggered by user');
+          this.recordUserAction();
+          
+          // Clear local cache to force fresh data
+          this.localCache.clearAll();
+          
+          // Force a fresh data fetch that bypasses all caches
+          this.isLoading = true;
+          this.loadingMessage = "Loading fresh data from sheets...";
+          this.loadStartTime = Date.now();
+          
+          google.script.run
+            .withSuccessHandler(response => {
+              const responseTime = Date.now() - this.loadStartTime;
+              console.log('✓ Fresh student data loaded successfully:', response);
+              console.log(`📊 Fresh data response time: ${responseTime}ms`);
+              
+              if (response && response.success && response.data && response.data.students) {
+                console.log(`Fresh load: ${response.metadata.freshLoad}, Students: ${response.metadata.studentCount}`);
+                this._handleStudentDataSuccess(response.data);
+              } else {
+                console.warn('Fresh data endpoint failed, falling back to cached endpoint');
+                this.loadingMessage = "Trying cached data...";
+                this._fetchStudentDataFromServer();
+              }
+            })
+            .withFailureHandler(error => {
+              const responseTime = Date.now() - this.loadStartTime;
+              console.error('Fresh data endpoint failed:', error);
+              console.log(`📊 Failed fresh data response time: ${responseTime}ms`);
+              console.log('Falling back to cached endpoint...');
+              this.loadingMessage = "Trying cached data...";
+              this._fetchStudentDataFromServer();
+            })
+            .api_getFreshStudentData();
+        },
+        
+
+
+        // Show performance statistics
+        showPerformanceStats() {
+          this.recordUserAction();
+          
+          const stats = this.getPerformanceStats();
+          const pollingStats = stats.polling;
+          const cacheStats = stats.cache;
+          const perfMetrics = this.performanceMetrics || { loadTimes: [], updateTimes: [], targetsMet: 0, targetsMissed: 0 };
+          
+          // Calculate average load times
+          const avgLoadTime = perfMetrics.loadTimes.length > 0 
+            ? Math.round(perfMetrics.loadTimes.reduce((a, b) => a + b, 0) / perfMetrics.loadTimes.length)
+            : 0;
+          
+          const avgUpdateTime = perfMetrics.updateTimes.length > 0
+            ? Math.round(perfMetrics.updateTimes.reduce((a, b) => a + b, 0) / perfMetrics.updateTimes.length)
+            : 0;
+          
+          const totalTargets = perfMetrics.targetsMet + perfMetrics.targetsMissed;
+          const targetSuccessRate = totalTargets > 0 
+            ? Math.round((perfMetrics.targetsMet / totalTargets) * 100)
+            : 0;
+          
+          const message = [
+            'Performance Statistics:',
+            '',
+            'Performance Targets:',
+            `- Success Rate: ${targetSuccessRate}% (${perfMetrics.targetsMet}/${totalTargets})`,
+            `- Average Load Time: ${avgLoadTime}ms (target: 3000ms)`,
+            `- Average Update Time: ${avgUpdateTime}ms (target: 1000ms)`,
+            `- Load Operations: ${perfMetrics.loadTimes.length}`,
+            `- Update Operations: ${perfMetrics.updateTimes.length}`,
+            '',
+            'Smart Polling:',
+            `- Activity Level: ${pollingStats.activityLevel}`,
+            `- Total Checks: ${pollingStats.totalChecks}`,
+            `- Updates Found: ${pollingStats.updatesFound}`,
+            `- Update Rate: ${pollingStats.updateRate}`,
+            `- Average Interval: ${Math.round(pollingStats.averageInterval/1000)}s`,
+            `- Time Since Last Activity: ${this.formatTimestamp(pollingStats.timeSinceLastActivity + Date.now())}`,
+            '',
+            'Local Cache:',
+            `- Entries: ${cacheStats.entryCount}`,
+            `- Size: ${cacheStats.totalSizeKB}KB / ${cacheStats.maxSizeKB}KB`,
+            `- Usage: ${cacheStats.usagePercent}%`,
+            `- Expired: ${cacheStats.expiredCount}`,
+            `- Hit Rate: ${cacheStats.entryCount > 0 ? Math.round((cacheStats.entryCount - cacheStats.expiredCount) / cacheStats.entryCount * 100) : 0}%`,
+            '',
+            'Optimistic Updates:',
+            `- Pending: ${stats.optimisticUpdates.length}`,
+            stats.optimisticUpdates.length > 0 ? `- Oldest Pending: ${this.formatTimestamp(Date.now() - Math.max(...stats.optimisticUpdates.map(u => u.age)))}` : '',
+            '',
+            `Last Action: ${this.formatTimestamp(stats.lastActionTime)}`,
+            `Last Update: ${this.formatTimestamp(stats.lastUpdateTimestamp)}`
+          ].filter(line => line !== '').join('\n');
+          
+          alert(message);
+        },
+        
+        // Format timestamp for display
+        formatTimestamp(timestamp) {
+          if (!timestamp) return 'Never';
+          
+          const now = Date.now();
+          const diff = now - timestamp;
+          
+          if (diff < 60000) { // Less than 1 minute
+            return `${Math.round(diff/1000)}s ago`;
+          } else if (diff < 3600000) { // Less than 1 hour
+            return `${Math.round(diff/60000)}m ago`;
+          } else {
+            return new Date(timestamp).toLocaleTimeString();
+          }
+        },
+        
+        // Format last update time for display
+        formatLastUpdate() {
+          return this.formatTimestamp(this.lastUpdateTimestamp);
+        },
+
+        // Get data freshness status and styling
+        getDataFreshnessStyle() {
+          const ageSeconds = this.getDataAgeSeconds();
+          
+          if (ageSeconds < 30) {
+            // Fresh data (< 30 seconds)
+            return 'background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb;';
+          } else if (ageSeconds < 90) {
+            // Slightly stale (30-90 seconds)
+            return 'background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7;';
+          } else {
+            // Stale data (> 90 seconds)
+            return 'background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;';
+          }
+        },
+
+        getDataFreshnessIcon() {
+          const ageSeconds = this.getDataAgeSeconds();
+          
+          if (ageSeconds < 30) {
+            return 'check_circle';
+          } else if (ageSeconds < 90) {
+            return 'schedule';
+          } else {
+            return 'warning';
+          }
+        },
+
+        getDataFreshnessText() {
+          const ageSeconds = this.getDataAgeSeconds();
+          
+          if (ageSeconds < 30) {
+            return `Fresh data (${ageSeconds}s ago)`;
+          } else if (ageSeconds < 90) {
+            return `Updating soon (${ageSeconds}s ago)`;
+          } else {
+            const minutes = Math.floor(ageSeconds / 60);
+            return `Stale data (${minutes}m ago)`;
+          }
+        },
+
+        shouldShowDataWarning() {
+          const ageSeconds = this.getDataAgeSeconds();
+          return ageSeconds > 90; // Show warning if data is older than 90 seconds
+        },
+
+        getDataAgeSeconds() {
+          if (!this.lastUpdateTimestamp) return 0;
+          return Math.floor((Date.now() - this.lastUpdateTimestamp) / 1000);
+        },
+        
+        // Log comprehensive performance report
+        _logPerformanceReport(isActiveReport = false) {
+          const pollingStats = this.smartPolling.getStats();
+          const cacheStats = this.localCache.getStats();
+          const perfMetrics = this.performanceMetrics || { loadTimes: [], updateTimes: [], targetsMet: 0, targetsMissed: 0 };
+          
+          const avgLoadTime = perfMetrics.loadTimes.length > 0 
+            ? Math.round(perfMetrics.loadTimes.reduce((a, b) => a + b, 0) / perfMetrics.loadTimes.length)
+            : 0;
+          
+          const avgUpdateTime = perfMetrics.updateTimes.length > 0
+            ? Math.round(perfMetrics.updateTimes.reduce((a, b) => a + b, 0) / perfMetrics.updateTimes.length)
+            : 0;
+          
+          const totalTargets = perfMetrics.targetsMet + perfMetrics.targetsMissed;
+          const targetSuccessRate = totalTargets > 0 
+            ? Math.round((perfMetrics.targetsMet / totalTargets) * 100)
+            : 100; // 100% if no targets measured yet
+          
+          const reportType = isActiveReport ? 'ACTIVE USER' : 'PERIODIC';
+          
+          console.log(`📊 ${reportType} PERFORMANCE REPORT:`);
+          console.log('Performance Targets:', {
+            successRate: `${targetSuccessRate}%`,
+            avgLoadTime: `${avgLoadTime}ms`,
+            avgUpdateTime: `${avgUpdateTime}ms`,
+            loadOps: perfMetrics.loadTimes.length,
+            updateOps: perfMetrics.updateTimes.length,
+            targetsMet: perfMetrics.targetsMet,
+            targetsMissed: perfMetrics.targetsMissed
+          });
+          
+          console.log('Smart Polling:', {
+            activityLevel: pollingStats.activityLevel,
+            updateRate: pollingStats.updateRate,
+            totalChecks: pollingStats.totalChecks,
+            updatesFound: pollingStats.updatesFound,
+            avgInterval: `${Math.round(pollingStats.averageInterval/1000)}s`,
+            timeSinceActivity: `${Math.round(pollingStats.timeSinceLastActivity/1000)}s`
+          });
+          
+          console.log('Cache Performance:', {
+            hitRate: `${cacheStats.entryCount > 0 ? Math.round((cacheStats.entryCount - cacheStats.expiredCount) / cacheStats.entryCount * 100) : 0}%`,
+            usage: `${cacheStats.usagePercent}%`,
+            size: `${cacheStats.totalSizeKB}KB`,
+            entries: cacheStats.entryCount,
+            expired: cacheStats.expiredCount
+          });
+          
+          const pendingUpdates = this.optimisticUI.getPendingUpdates();
+          if (pendingUpdates.length > 0) {
+            console.log('Optimistic Updates:', {
+              pending: pendingUpdates.length,
+              oldestAge: `${Math.round(Math.max(...pendingUpdates.map(u => u.age))/1000)}s`
+            });
+          }
+          
+          // Alert if performance is degraded
+          if (targetSuccessRate < 80 && totalTargets >= 5) {
+            console.warn(`⚠️ Performance Alert: Target success rate is ${targetSuccessRate}% (below 80%)`);
+          }
+          
+          if (avgLoadTime > 5000 && perfMetrics.loadTimes.length >= 3) {
+            console.warn(`⚠️ Performance Alert: Average load time is ${avgLoadTime}ms (above 5000ms)`);
+          }
+          
+          if (avgUpdateTime > 2000 && perfMetrics.updateTimes.length >= 5) {
+            console.warn(`⚠️ Performance Alert: Average update time is ${avgUpdateTime}ms (above 2000ms)`);
+          }
         },
 
         fallbackToMinimalBypass() {
@@ -1017,6 +2590,53 @@
               alert('Critical error loading data: ' + error.message);
             })
             .api_minimalBypass();
+        },
+        
+        // Fallback method for update operations when optimized endpoints fail
+        _fallbackUpdateStatus(studentName, action, teacherName, gender, updateId) {
+          console.log('Using fallback update method for:', studentName, action);
+          
+          google.script.run
+            .withSuccessHandler((resp) => {
+              console.log('Fallback update successful:', resp);
+              
+              // Confirm optimistic update with server response
+              this.optimisticUI.confirmServerUpdate(
+                updateId,
+                resp,
+                (serverState) => {
+                  // No need to refresh all data - optimistic update is already applied
+                  console.log('Fallback update confirmed, relying on smart polling for other updates');
+                }
+              );
+            })
+            .withFailureHandler((error) => {
+              console.error('Fallback update also failed:', error);
+              
+              // Revert optimistic update on error
+              this.optimisticUI.revertOnError(
+                updateId,
+                (originalState) => {
+                  // Revert the student object
+                  const studentIndex = this.students.findIndex(s => s.name === studentName);
+                  if (studentIndex !== -1) {
+                    this.students[studentIndex] = { ...this.students[studentIndex], ...originalState };
+                    
+                    // Restore to queue if they were originally waiting (for 'out' action)
+                    if (action === 'out' && originalState.holdNotice && !originalState.outTime) {
+                      const genderQueue = gender === 'G' ? 'girls' : 'boys';
+                      if (!this.queue[genderQueue].includes(studentName)) {
+                        this.queue[genderQueue].push(studentName);
+                      }
+                    }
+                  }
+                },
+                error.message || error
+              );
+              
+              alert(`Error updating student status: ${error.message || error}\n\nThe change has been reverted.`);
+            })
+            .api_updateStatus(studentName, action, teacherName, gender);
         },
 
         mergeLogDataFallback() {
@@ -1241,42 +2861,50 @@
         },
 
         getButtonClass(stu) {
-          // If student already completed their trip (has both out and back times)
+          let baseClass = '';
+          
+          // Determine base button state
           if (stu.outTime && stu.backTime) {
-            return 'already-went';
+            baseClass = 'already-went';
+          } else if (stu.outTime && !stu.backTime) {
+            baseClass = 'currently-out';
+          } else if (this.isReadyToMarkOut(stu)) {
+            baseClass = 'rr-available';
+          } else if (stu.holdNotice && !this.isReadyToMarkOut(stu)) {
+            baseClass = 'waiting';
+          } else if (!stu.outTime && !stu.holdNotice) {
+            baseClass = ''; // Default styling
+          } else {
+            baseClass = 'disabled';
           }
-
-          // If student is currently out (has out time but no back time)
-          if (stu.outTime && !stu.backTime) {
-            return 'currently-out';
+          
+          // Add data staleness indicator for interactive buttons
+          const isInteractiveButton = !baseClass || baseClass === 'rr-available';
+          if (isInteractiveButton && this.shouldShowDataWarning()) {
+            baseClass += ' data-stale';
           }
-
-          // If student is ready to mark out (next in queue and restroom available)
-          if (this.isReadyToMarkOut(stu)) {
-            return 'rr-available';
-          }
-
-          // If student is waiting but not ready
-          if (stu.holdNotice && !this.isReadyToMarkOut(stu)) {
-            return 'waiting';
-          }
-
-          // If student has no out time and no hold notice (default state)
-          if (!stu.outTime && !stu.holdNotice) {
-            return ''; // Default styling
-          }
-
-          return 'disabled';
+          
+          return baseClass;
         },
 
         getButtonTitle(stu) {
           const buttonText = this.getButtonText(stu);
+          let baseTitle = '';
 
           if (buttonText === 'RR AVAILABLE') {
-            return 'SEND NOW';
+            baseTitle = 'SEND NOW';
+          } else {
+            baseTitle = `Student status - outTime: ${stu.outTime} | holdNotice: ${stu.holdNotice} | ready to promote: ${this.isReadyToMarkOut(stu)}`;
           }
-
-          return 'Student status - outTime: ' + stu.outTime + ' | holdNotice: ' + stu.holdNotice + ' | ready to promote: ' + this.isReadyToMarkOut(stu);
+          
+          // Add staleness warning for interactive buttons
+          const isInteractiveButton = buttonText === 'REQUEST RR' || buttonText === 'RR AVAILABLE';
+          if (isInteractiveButton && this.shouldShowDataWarning()) {
+            const ageText = this.getDataFreshnessText().toLowerCase();
+            baseTitle += `\n\n⚠️ WARNING: Data ${ageText}. Click "Refresh Data" first to avoid duplicates.`;
+          }
+          
+          return baseTitle;
         },
 
         getBackButtonText(stu) {
@@ -1297,11 +2925,14 @@
         },
 
         onGenderChange(stu) {
-          // Update gender on the server
+          // Track user activity and update gender on the server
+          this.recordUserAction();
           console.log('Gender changed for', stu.name, 'to', stu.gender);
         },
+        
         onTeacherChange(stu) {
-          // Update teacher on the server
+          // Track user activity and update teacher on the server
+          this.recordUserAction();
           console.log('Teacher changed for', stu.name, 'to', stu.teacher);
         },
 
@@ -1322,11 +2953,14 @@
             return;
           }
 
+          // Check if there's already a pending update for this student
+          if (this.optimisticUI.hasPendingUpdates(stu.name)) {
+            console.log('Student already has pending update, ignoring click');
+            return;
+          }
+
           this.recordUserAction(); // Track user activity
           console.log('Full student object:', stu);
-          console.log('Gender value:', `"${stu.gender}"`, 'Type:', typeof stu.gender, 'Length:', stu.gender ? stu.gender.length : 'N/A');
-          console.log('Teacher value:', `"${stu.teacher}"`, 'Type:', typeof stu.teacher, 'Length:', stu.teacher ? stu.teacher.length : 'N/A');
-          console.log('Detected teacher:', this.detectedTeacher);
 
           // Validate that gender is selected
           if (!stu.gender || stu.gender.trim() === "") {
@@ -1348,71 +2982,188 @@
             return;
           }
 
-          console.log('Validations passed. Calling api_updateStatus with:', {
+          console.log('Validations passed. Applying optimistic update for:', {
             studentName: stu.name,
             action: "out",
             teacherName: stu.teacher,
             gender: stu.gender
           });
 
-          // Show loading state for this specific operation
-          this.isLoading = true;
-          if (stu.holdNotice) {
-            this.loadingMessage = `Processing ${stu.name} from waiting list...`;
-          } else {
-            this.loadingMessage = `Marking ${stu.name} OUT...`;
-          }
+          // Apply optimistic update for immediate feedback
+          const updateId = this.optimisticUI.updateStudentStatusOptimistically(
+            stu, 
+            'out', 
+            stu.teacher,
+            (optimisticState) => {
+              // Update the student object immediately
+              const studentIndex = this.students.findIndex(s => s.name === stu.name);
+              if (studentIndex !== -1) {
+                this.students[studentIndex] = { ...this.students[studentIndex], ...optimisticState };
+                
+                // Update queue immediately - remove from queue if they were waiting
+                if (stu.holdNotice) {
+                  const genderQueue = stu.gender === 'G' ? 'girls' : 'boys';
+                  const queueIndex = this.queue[genderQueue].indexOf(stu.name);
+                  if (queueIndex !== -1) {
+                    this.queue[genderQueue].splice(queueIndex, 1);
+                  }
+                }
+              }
+            }
+          );
 
+          // Track update start time for performance monitoring
+          const updateStartTime = Date.now();
+          
+          // Send request to server using optimized endpoint
           google.script.run
             .withSuccessHandler((resp) => {
+              const updateTime = Date.now() - updateStartTime;
               console.log('Mark out successful:', resp);
-              this.loadingMessage = "Refreshing data...";
-              // Always refresh data after successful operation to get latest times from log
-              setTimeout(() => {
-                this.refreshData();
-              }, 500); // Short delay to ensure server has processed the update
+              console.log(`📊 Update response time: ${updateTime}ms`);
+              
+              // Validate update performance target (1 second)
+              if (updateTime <= 1000) {
+                console.log(`✅ Update performance target met: ${updateTime}ms (target: 1000ms)`);
+              } else {
+                console.warn(`⚠️ Update performance target missed: ${updateTime}ms (target: 1000ms)`);
+              }
+              
+              if (resp && resp.success) {
+                // Confirm optimistic update with server response
+                this.optimisticUI.confirmServerUpdate(
+                  updateId,
+                  resp,
+                  (serverState) => {
+                    // No need to refresh all data - optimistic update is already applied
+                    console.log('Mark out confirmed, relying on smart polling for other updates');
+                  }
+                );
+              } else {
+                // Handle server-side failure
+                const errorMsg = resp ? resp.error : 'Unknown server error';
+                console.error('Server returned failure:', errorMsg);
+                
+                this.optimisticUI.revertOnError(
+                  updateId,
+                  (originalState) => {
+                    // Revert the student object
+                    const studentIndex = this.students.findIndex(s => s.name === stu.name);
+                    if (studentIndex !== -1) {
+                      this.students[studentIndex] = { ...this.students[studentIndex], ...originalState };
+                      
+                      // Restore to queue if they were originally waiting
+                      if (originalState.holdNotice && !originalState.outTime) {
+                        const genderQueue = stu.gender === 'G' ? 'girls' : 'boys';
+                        if (!this.queue[genderQueue].includes(stu.name)) {
+                          this.queue[genderQueue].push(stu.name);
+                        }
+                      }
+                    }
+                  },
+                  errorMsg
+                );
+                
+                alert(`Error marking student out: ${errorMsg}\n\nThe change has been reverted.`);
+              }
             })
             .withFailureHandler((error) => {
-              console.error('Error marking out:', error);
-              console.error('Error details:', error.message, error.stack);
-              this.isLoading = false;
-              this.loadingMessage = "";
-              alert(`Error marking student out: ${error.message || error}\n\nCheck console for details.`);
+              console.error('Optimized endpoint failed for marking out:', error);
+              console.log('Attempting fallback method...');
+              
+              // Try fallback method before reverting
+              this._fallbackUpdateStatus(stu.name, "out", stu.teacher, stu.gender, updateId);
             })
-            .api_updateStatus(stu.name, "out", stu.teacher, stu.gender);
+            .api_updateStudentStatusOptimized(stu.name, "out", stu.teacher, stu.gender);
         },
 
         markBack(stu) {
           console.log('markBack button clicked for:', stu.name);
+          
+          // Check if there's already a pending update for this student
+          if (this.optimisticUI.hasPendingUpdates(stu.name)) {
+            console.log('Student already has pending update, ignoring click');
+            return;
+          }
+          
           this.recordUserAction(); // Track user activity
           console.log('Student data:', stu);
-          console.log('Calling api_updateStatus with:', {
+          console.log('Applying optimistic update for back action:', {
             name: stu.name,
             action: "back",
             teacher: stu.teacher,
             gender: stu.gender
           });
 
-          // Show loading state for this specific operation
-          this.isLoading = true;
-          this.loadingMessage = `Marking ${stu.name} BACK...`;
+          // Apply optimistic update for immediate feedback
+          const updateId = this.optimisticUI.updateStudentStatusOptimistically(
+            stu, 
+            'back', 
+            stu.teacher,
+            (optimisticState) => {
+              // Update the student object immediately
+              const studentIndex = this.students.findIndex(s => s.name === stu.name);
+              if (studentIndex !== -1) {
+                this.students[studentIndex] = { ...this.students[studentIndex], ...optimisticState };
+              }
+            }
+          );
 
+          // Track update start time for performance monitoring
+          const updateStartTime = Date.now();
+          
+          // Send request to server using optimized endpoint
           google.script.run
             .withSuccessHandler((resp) => {
+              const updateTime = Date.now() - updateStartTime;
               console.log('Mark back successful:', resp);
-              this.loadingMessage = "Refreshing data...";
-              // Always refresh data after successful operation to get latest times from log
-              setTimeout(() => {
-                this.refreshData();
-              }, 500); // Short delay to ensure server has processed the update
+              console.log(`📊 Update response time: ${updateTime}ms`);
+              
+              // Validate update performance target (1 second)
+              if (updateTime <= 1000) {
+                console.log(`✅ Update performance target met: ${updateTime}ms (target: 1000ms)`);
+              } else {
+                console.warn(`⚠️ Update performance target missed: ${updateTime}ms (target: 1000ms)`);
+              }
+              
+              if (resp && resp.success) {
+                // Confirm optimistic update with server response
+                this.optimisticUI.confirmServerUpdate(
+                  updateId,
+                  resp,
+                  (serverState) => {
+                    // No need to refresh all data - optimistic update is already applied
+                    console.log('Mark back confirmed, relying on smart polling for other updates');
+                  }
+                );
+              } else {
+                // Handle server-side failure
+                const errorMsg = resp ? resp.error : 'Unknown server error';
+                console.error('Server returned failure:', errorMsg);
+                
+                this.optimisticUI.revertOnError(
+                  updateId,
+                  (originalState) => {
+                    // Revert the student object
+                    const studentIndex = this.students.findIndex(s => s.name === stu.name);
+                    if (studentIndex !== -1) {
+                      this.students[studentIndex] = { ...this.students[studentIndex], ...originalState };
+                    }
+                  },
+                  errorMsg
+                );
+                
+                alert(`Error marking student back: ${errorMsg}\n\nThe change has been reverted.`);
+              }
             })
             .withFailureHandler((error) => {
-              console.error('Error marking back:', error);
-              this.isLoading = false;
-              this.loadingMessage = "";
-              alert('Error marking student back. Please try again.');
+              console.error('Optimized endpoint failed for marking back:', error);
+              console.log('Attempting fallback method...');
+              
+              // Try fallback method before reverting
+              this._fallbackUpdateStatus(stu.name, "back", stu.teacher, stu.gender, updateId);
             })
-            .api_updateStatus(stu.name, "back", stu.teacher, stu.gender);
+            .api_updateStudentStatusOptimized(stu.name, "back", stu.teacher, stu.gender);
         }
       };
     }

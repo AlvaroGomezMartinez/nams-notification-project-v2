@@ -19,19 +19,36 @@
       #notification { margin-top: 12px; padding: 8px; border-radius: 4px; }
       .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
       .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+      /* Modern Spinner CSS Custom Properties */
+      :root {
+        --spinner-primary-color: #2196F3;
+        --spinner-secondary-color: rgba(33, 150, 243, 0.3);
+        --spinner-size: 16px;
+        --spinner-duration: 1.2s;
+      }
+
+      /* Simplified Single-Dot Spinner for TeacherManagement */
       .spinner {
         display: none;
         margin: 16px auto;
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #3498db;
+        width: var(--spinner-size);
+        height: var(--spinner-size);
+        background-color: var(--spinner-primary-color);
         border-radius: 50%;
-        width: 32px;
-        height: 32px;
-        animation: spin 1s linear infinite;
+        animation: pulse-dot var(--spinner-duration) ease-in-out infinite;
+        will-change: transform, opacity;
       }
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
+
+      /* Pulsing Animation Keyframes */
+      @keyframes pulse-dot {
+        0%, 100% {
+          transform: scale(0.8);
+          opacity: 0.3;
+        }
+        50% {
+          transform: scale(1.2);
+          opacity: 1;
+        }
       }
     </style>
   </head>
