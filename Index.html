@@ -439,6 +439,12 @@
           <button class="btn" @click="showPerformanceStats()" style="margin-right: 10px;">
             <i class="material-icons left">analytics</i>Performance Stats
           </button>
+          <button class="btn" @click="openPerformanceDashboard()" style="margin-right: 10px;">
+            <i class="material-icons left">speed</i>Performance Tests
+          </button>
+          <button class="btn" @click="runQuickPerformanceTest()" style="margin-right: 10px;">
+            <i class="material-icons left">timer</i>Quick Test
+          </button>
 
 
         </div>
@@ -2366,6 +2372,60 @@
           ].filter(line => line !== '').join('\n');
           
           alert(message);
+        },
+        
+        // Open performance dashboard in new tab
+        openPerformanceDashboard() {
+          this.recordUserAction();
+          
+          // Get current URL and add performance parameter
+          const currentUrl = window.location.href;
+          const baseUrl = currentUrl.split('?')[0]; // Remove existing parameters
+          const performanceUrl = baseUrl + '?page=performance';
+          
+          // Open in new tab
+          window.open(performanceUrl, '_blank');
+        },
+        
+        // Run quick performance test
+        runQuickPerformanceTest() {
+          this.recordUserAction();
+          
+          const startTime = Date.now();
+          this.isLoading = true;
+          this.loadingMessage = "Running performance test...";
+          
+          google.script.run
+            .withSuccessHandler((result) => {
+              const totalTime = Date.now() - startTime;
+              this.isLoading = false;
+              
+              const message = [
+                'Quick Performance Test Results:',
+                '',
+                `Total Test Time: ${totalTime}ms`,
+                `Server Response Time: ${result.responseTime || 'N/A'}ms`,
+                `Students Loaded: ${result.studentCount || 0}`,
+                `Cache Used: ${result.cacheUsed ? 'Yes' : 'No'}`,
+                '',
+                'Performance Rating:',
+                totalTime < 2000 ? '✅ Excellent (< 2s)' :
+                totalTime < 5000 ? '⚠️ Good (2-5s)' :
+                totalTime < 10000 ? '🐌 Slow (5-10s)' :
+                '❌ Very Slow (> 10s)',
+                '',
+                result.error ? `Error: ${result.error}` : 'Test completed successfully'
+              ].filter(line => line !== '').join('\n');
+              
+              alert(message);
+            })
+            .withFailureHandler((error) => {
+              const totalTime = Date.now() - startTime;
+              this.isLoading = false;
+              
+              alert(`Performance Test Failed:\nTime: ${totalTime}ms\nError: ${error.message || error}`);
+            })
+            .api_quickPerformanceTest();
         },
         
         // Format timestamp for display
