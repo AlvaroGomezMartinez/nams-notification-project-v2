@@ -2582,8 +2582,15 @@
                 updateId,
                 resp,
                 (serverState) => {
-                  // No need to refresh all data - optimistic update is already applied
-                  console.log('Fallback update confirmed, relying on smart polling for other updates');
+                  console.log('Fallback update confirmed, triggering immediate data sync');
+                  // Trigger immediate background refresh and smart polling check
+                  setTimeout(() => {
+                    this._fetchStudentDataInBackground();
+                    // Also trigger immediate smart polling check for other potential updates
+                    if (this.smartPolling && this.smartPolling.isActive) {
+                      this.smartPolling.checkForUpdates();
+                    }
+                  }, 100); // Small delay to ensure server-side processing is complete
                 }
               );
             })
@@ -3003,8 +3010,15 @@
                   updateId,
                   resp,
                   (serverState) => {
-                    // No need to refresh all data - optimistic update is already applied
-                    console.log('Mark out confirmed, relying on smart polling for other updates');
+                    console.log('Mark out confirmed, triggering immediate data sync');
+                    // Trigger immediate background refresh and smart polling check
+                    setTimeout(() => {
+                      this._fetchStudentDataInBackground();
+                      // Also trigger immediate smart polling check for other potential updates
+                      if (this.smartPolling && this.smartPolling.isActive) {
+                        this.smartPolling.checkForUpdates();
+                      }
+                    }, 100); // Small delay to ensure server-side processing is complete
                   }
                 );
               } else {
@@ -3100,8 +3114,15 @@
                   updateId,
                   resp,
                   (serverState) => {
-                    // No need to refresh all data - optimistic update is already applied
-                    console.log('Mark back confirmed, relying on smart polling for other updates');
+                    console.log('Mark back confirmed, triggering immediate data sync');
+                    // Trigger immediate background refresh and smart polling check
+                    setTimeout(() => {
+                      this._fetchStudentDataInBackground();
+                      // Also trigger immediate smart polling check for other potential updates
+                      if (this.smartPolling && this.smartPolling.isActive) {
+                        this.smartPolling.checkForUpdates();
+                      }
+                    }, 100); // Small delay to ensure server-side processing is complete
                   }
                 );
               } else {
