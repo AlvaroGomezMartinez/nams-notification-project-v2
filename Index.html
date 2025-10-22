@@ -357,17 +357,7 @@
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
       }
 
-      /* Queue table container styling */
-      .queue-container {
-        border: 1px solid #07224c !important;
-        border-radius: 8px !important;
-        padding: 15px !important;
-        background-color: #f8f9fa !important;
-        margin-bottom: 10px !important;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
-        overflow-y: auto;
-        max-height: 70vh;
-      }
+
 
       /* Regular header styles with tight spacing (no longer sticky) */
       .sticky-header {
@@ -412,10 +402,7 @@
         font-weight: 600;
       }
 
-      .queue-container thead th {
-        background: #f5f5f5;
-        font-weight: 600;
-      }
+
     </style>
   </head>
 
@@ -482,9 +469,13 @@
               <input 
                 type="text" 
                 x-model="searchTerm"
-                @input="searchStudents()"
-                @focus="showSearchResults = true"
-                placeholder="Search for student by first or last name..."
+                @input="filterStudents()"
+                @focus="showAllStudents()"
+                @keydown.escape="hideSearchResults()"
+                @keydown.arrow-down.prevent="highlightNext()"
+                @keydown.arrow-up.prevent="highlightPrevious()"
+                @keydown.enter.prevent="selectHighlighted()"
+                placeholder="Click to see all students or type to search..."
                 style="
                   width: 100%; 
                   padding: 12px; 
@@ -497,7 +488,7 @@
               
               <!-- Search Results Dropdown -->
               <div 
-                x-show="showSearchResults && searchResults.length > 0"
+                x-show="showSearchResults && (searchResults.length > 0 || isSearching)"
                 style="
                   position: absolute;
                   top: 100%;
@@ -507,48 +498,80 @@
                   border: 1px solid #ddd;
                   border-top: none;
                   border-radius: 0 0 4px 4px;
-                  max-height: 200px;
+                  max-height: 300px;
                   overflow-y: auto;
                   z-index: 1000;
-                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
                 "
               >
-                <template x-for="student in searchResults" :key="student.name">
+                <!-- Loading state -->
+                <div x-show="isSearching" style="padding: 15px; text-align: center; color: #666;">
+                  <div class="modern-spinner" style="justify-content: center; margin-bottom: 8px;">
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                  </div>
+                  Loading students...
+                </div>
+
+                <!-- Results count header -->
+                <div x-show="!isSearching && searchResults.length > 0" 
+                     style="
+                       padding: 8px 12px; 
+                       background: #f8f9fa; 
+                       border-bottom: 1px solid #e9ecef; 
+                       font-size: 12px; 
+                       color: #666;
+                       font-weight: 500;
+                     ">
+                  <span x-show="!searchTerm || searchTerm.trim() === ''" x-text="`All Students (${searchResults.length})`"></span>
+                  <span x-show="searchTerm && searchTerm.trim() !== ''" x-text="`${searchResults.length} students found`"></span>
+                </div>
+
+                <!-- Student list -->
+                <template x-for="(student, index) in searchResults" :key="student.name">
                   <div 
                     @click="selectStudent(student)"
+                    @mouseenter="highlightedIndex = index"
+                    :class="{ 'highlighted': index === highlightedIndex }"
                     style="
-                      padding: 10px 12px;
+                      padding: 12px;
                       cursor: pointer;
                       border-bottom: 1px solid #f0f0f0;
+                      transition: background-color 0.2s ease;
                     "
-                    :style="{ 'background-color': $el.matches(':hover') ? '#f5f5f5' : 'white' }"
-                    @mouseenter="$el.style.backgroundColor = '#f5f5f5'"
-                    @mouseleave="$el.style.backgroundColor = 'white'"
+                    :style="{ 
+                      'background-color': index === highlightedIndex ? '#e3f2fd' : 'white',
+                      'border-left': index === highlightedIndex ? '3px solid #2196f3' : '3px solid transparent'
+                    }"
                   >
-                    <strong x-text="student.name"></strong>
-                    <span x-show="student.id" style="color: #666; margin-left: 8px">
-                      (ID: <span x-text="student.id"></span>)
-                    </span>
+                    <div style="font-weight: 500; color: #333;" x-text="student.name"></div>
+                    <div x-show="student.id" style="font-size: 12px; color: #666; margin-top: 2px;">
+                      ID: <span x-text="student.id"></span>
+                    </div>
                   </div>
                 </template>
+
+                <!-- No results message -->
+                <div x-show="!isSearching && searchResults.length === 0 && searchTerm && searchTerm.trim() !== ''" 
+                     style="padding: 20px; text-align: center; color: #666; font-style: italic;">
+                  No students found matching "<span x-text="searchTerm"></span>"
+                </div>
               </div>
             </div>
             
-            <!-- Search Status -->
-            <div x-show="searchTerm && searchResults.length === 0 && !isSearching" style="color: #666; font-style: italic;">
-              No students found matching "<span x-text="searchTerm"></span>"
-            </div>
-            <div x-show="isSearching" style="color: #666; font-style: italic;">
-              Searching...
+            <!-- Search Help Text -->
+            <div x-show="!showSearchResults && !searchTerm" style="color: #666; font-size: 14px; margin-top: 8px;">
+              Click in the search box to see all students, or start typing to filter by name.
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Active Students and Queue Tables -->
+      <!-- Active Students Table -->
       <div class="row">
         <!-- Active Students table column -->
-        <div class="col s8">
+        <div class="col s12">
           <h5>Active Students</h5>
 
           <div class="table-container" style="position: relative">
@@ -681,34 +704,7 @@
           </div>
         </div>
 
-        <!-- Queue table column -->
-        <div class="col s4">
-          <h5>Waiting List</h5>
-          <div class="queue-container">
-            <table class="striped">
-              <thead>
-                <tr>
-                  <th>Girls</th>
-                  <th>Boys</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>
-                    <template x-for="(g, idx) in queue.girls" :key="g">
-                      <div :class="{ highlight: idx === 0 }" x-text="g"></div>
-                    </template>
-                  </td>
-                  <td>
-                    <template x-for="(b, idx) in queue.boys" :key="b">
-                      <div :class="{ highlight: idx === 0 }" x-text="b"></div>
-                    </template>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+
       </div>
     </div>
 
@@ -1682,7 +1678,6 @@
           detectedTeacher: "",
           userEmail: "",
           students: [],
-          queue: { girls: [], boys: [] },
           isLoading: false,
           loadingMessage: "",
           lastActionTime: 0,
@@ -1692,9 +1687,12 @@
           // Search functionality
           searchTerm: "",
           searchResults: [],
+          allStudents: [], // Cache of all students for dropdown
           showSearchResults: false,
           isSearching: false,
           searchTimeout: null,
+          studentsLoaded: false, // Track if we've loaded all students
+          highlightedIndex: -1, // For keyboard navigation
 
           // Initialize LocalDataCache instance
           localCache: new LocalDataCache(),
@@ -2126,7 +2124,6 @@
                   );
                   // Load this data into the interface
                   this.students = resp.students;
-                  this.queue = resp.queue || { girls: [], boys: [] };
                 } else {
                   console.error(
                     "Minimal bypass returned invalid structure:",
@@ -2157,7 +2154,6 @@
                   );
                   // Load this data into the interface
                   this.students = resp.students;
-                  this.queue = resp.queue || { girls: [], boys: [] };
                 } else {
                   console.error("October 16 returned invalid structure:", resp);
                   alert(
@@ -2184,7 +2180,6 @@
                   );
                   // Load this data into the interface
                   this.students = resp.students;
-                  this.queue = resp.queue || { girls: [], boys: [] };
                 } else {
                   console.error(
                     "Final version returned invalid structure:",
@@ -2310,7 +2305,7 @@
                 this.loadingMessage = "Trying fallback method...";
                 this.fallbackToMinimalBypass();
               })
-              .api_getFreshStudentData();
+              .api_getActiveStudents();
           },
 
           _fetchStudentDataInBackground() {
@@ -2355,7 +2350,7 @@
                   error,
                 );
               })
-              .api_getFreshStudentData();
+              .api_getActiveStudents();
           },
 
           _handleStudentDataSuccess(data, showLoading = true) {
@@ -2363,7 +2358,6 @@
             const loadTime = Date.now() - startTime;
 
             this.students = data.students;
-            this.queue = data.queue || { girls: [], boys: [] };
 
             // Cache the student data
             this.localCache.set("studentData", data, 30); // Cache for 30 minutes
@@ -2461,13 +2455,7 @@
               return true;
             }
 
-            if (
-              !this.queue ||
-              this.queue.girls.length !== (newData.queue?.girls?.length || 0) ||
-              this.queue.boys.length !== (newData.queue?.boys?.length || 0)
-            ) {
-              return true;
-            }
+
 
             // Check for status changes in first few students (most likely to change)
             for (let i = 0; i < Math.min(5, this.students.length); i++) {
@@ -2593,15 +2581,11 @@
             });
 
             if (hasChanges) {
-              // Rebuild queue based on updated student data
-              this._rebuildQueue();
-
               // Update local cache with new data
               this.localCache.set(
                 "studentData",
                 {
                   students: this.students,
-                  queue: this.queue,
                 },
                 30,
               );
@@ -2612,24 +2596,7 @@
             }
           },
 
-          // Rebuild queue from current student data
-          _rebuildQueue() {
-            const newQueue = { girls: [], boys: [] };
 
-            this.students.forEach((student) => {
-              // Add to queue if waiting (has hold notice but no out time)
-              if (student.holdNotice && !student.outTime) {
-                if (student.gender === "G") {
-                  newQueue.girls.push(student.name);
-                } else if (student.gender === "B") {
-                  newQueue.boys.push(student.name);
-                }
-              }
-            });
-
-            this.queue = newQueue;
-            console.log("Queue rebuilt:", this.queue);
-          },
 
           // Stop smart refresh system
           stopSmartRefresh() {
@@ -2658,49 +2625,8 @@
             // Clear local cache to force fresh data
             this.localCache.clearAll();
 
-            // Force a fresh data fetch that bypasses all caches
-            this.isLoading = true;
-            this.loadingMessage = "Loading fresh data from sheets...";
-            this.loadStartTime = Date.now();
-
-            google.script.run
-              .withSuccessHandler((response) => {
-                const responseTime = Date.now() - this.loadStartTime;
-                console.log(
-                  "✓ Fresh student data loaded successfully:",
-                  response,
-                );
-                console.log(`📊 Fresh data response time: ${responseTime}ms`);
-
-                if (
-                  response &&
-                  response.success &&
-                  response.data &&
-                  response.data.students
-                ) {
-                  console.log(
-                    `Fresh load: ${response.metadata.freshLoad}, Students: ${response.metadata.studentCount}`,
-                  );
-                  this._handleStudentDataSuccess(response.data);
-                } else {
-                  console.warn(
-                    "Fresh data endpoint failed, falling back to cached endpoint",
-                  );
-                  this.loadingMessage = "Trying cached data...";
-                  this._fetchStudentDataFromServer();
-                }
-              })
-              .withFailureHandler((error) => {
-                const responseTime = Date.now() - this.loadStartTime;
-                console.error("Fresh data endpoint failed:", error);
-                console.log(
-                  `📊 Failed fresh data response time: ${responseTime}ms`,
-                );
-                console.log("Falling back to cached endpoint...");
-                this.loadingMessage = "Trying cached data...";
-                this._fetchStudentDataFromServer();
-              })
-              .api_getFreshStudentData();
+            // Refresh only active students (not all students from roster)
+            this.refreshData();
           },
 
           // Format timestamp for display
@@ -2819,46 +2745,30 @@
           },
 
           fallbackToMinimalBypass() {
-            console.log("Using fallback: api_minimalBypass + log data merge");
+            console.log("Using fallback: loading active students only");
 
             google.script.run
-              .withSuccessHandler((result) => {
-                console.log("Fallback roster received:", result);
+              .withSuccessHandler((response) => {
+                console.log("Fallback active students received:", response);
 
-                if (result && result.students) {
-                  // Process basic roster first
-                  this.students = result.students.map((s) => {
-                    const assignedTeacher =
-                      this.detectedTeacher ||
-                      this.teachers[0] ||
-                      "Other Teacher";
-
-                    return {
-                      name: s.name,
-                      gender: s.gender || "",
-                      teacher: s.teacher || assignedTeacher,
-                      outTime: s.outTime ? this.formatDate(s.outTime) : "",
-                      backTime: s.backTime ? this.formatDate(s.backTime) : "",
-                      holdNotice: s.holdNotice || "",
-                    };
-                  });
-
-                  this.queue = result.queue || { girls: [], boys: [] };
-
-                  // Now try to merge log data
-                  this.mergeLogDataFallback();
+                if (response && response.success && response.data) {
+                  this._handleStudentDataSuccess(response.data);
                 } else {
-                  console.error("Even fallback failed:", result);
-                  alert(
-                    "Unable to load student data. Please refresh the page.",
-                  );
+                  console.error("Even fallback failed:", response);
+                  // Initialize with empty data instead of failing
+                  this.students = [];
+                  this.isLoading = false;
+                  this.loadingMessage = "";
                 }
               })
               .withFailureHandler((error) => {
                 console.error("Fallback also failed:", error);
-                alert("Critical error loading data: " + error.message);
+                // Initialize with empty data instead of showing alert
+                this.students = [];
+                this.isLoading = false;
+                this.loadingMessage = "";
               })
-              .api_minimalBypass();
+              .api_getActiveStudents();
           },
 
           // Fallback method for update operations when optimized endpoints fail
@@ -2921,10 +2831,7 @@
                         originalState.holdNotice &&
                         !originalState.outTime
                       ) {
-                        const genderQueue = gender === "G" ? "girls" : "boys";
-                        if (!this.queue[genderQueue].includes(studentName)) {
-                          this.queue[genderQueue].push(studentName);
-                        }
+
                       }
                     }
                   },
@@ -3066,7 +2973,7 @@
 
               return processedStudent;
             });
-            this.queue = resp.queue;
+
             console.log("Final students array:", this.students);
             // Set dateString and periodString
             const now = new Date();
@@ -3148,15 +3055,12 @@
             }
           },
 
-          isNextInQueue(stu) {
-            const q = this.queue[stu.gender === "G" ? "girls" : "boys"];
-            return q.length > 0 && q[0] === stu.name;
-          },
+
 
           isReadyToMarkOut(stu) {
-            // Highlight a student if they are next in queue AND no one of their gender is currently out
-            if (!this.isNextInQueue(stu)) {
-              return false; // Not next in queue
+            // Student is ready if they have a hold notice (requested) and no one of their gender is currently out
+            if (!stu.holdNotice || stu.outTime) {
+              return false; // Not requested or already out
             }
 
             // Check if anyone of the same gender is currently out (has outTime but no backTime)
@@ -3167,7 +3071,7 @@
               (s) => s.outTime && !s.backTime,
             );
 
-            // Highlight if this student is next in queue AND no one of their gender is currently out
+            // Ready if no one of their gender is currently out
             return !anyoneOut;
           },
 
@@ -3187,12 +3091,12 @@
               return "CURRENTLY OUT";
             }
 
-            // If student is on waiting list, check their position
+            // If student has requested restroom access
             if (this.isReadyToMarkOut(stu)) {
-              // Student is next in line and restroom is available
+              // Restroom is available for this gender
               return "RR AVAILABLE";
             } else {
-              // Student is waiting but not ready yet (either not first in line or restroom occupied)
+              // Restroom is occupied by someone of the same gender
               return "WAITING";
             }
           },
@@ -3343,16 +3247,7 @@
                       ...optimisticState,
                     };
 
-                    // Update queue immediately - remove from queue if they were waiting
-                    if (stu.holdNotice) {
-                      const genderQueue = stu.gender === "G" ? "girls" : "boys";
-                      const queueIndex = this.queue[genderQueue].indexOf(
-                        stu.name,
-                      );
-                      if (queueIndex !== -1) {
-                        this.queue[genderQueue].splice(queueIndex, 1);
-                      }
-                    }
+
                   }
                 },
               );
@@ -3420,11 +3315,7 @@
                           originalState.holdNotice &&
                           !originalState.outTime
                         ) {
-                          const genderQueue =
-                            stu.gender === "G" ? "girls" : "boys";
-                          if (!this.queue[genderQueue].includes(stu.name)) {
-                            this.queue[genderQueue].push(stu.name);
-                          }
+
                         }
                       }
                     },
@@ -3592,31 +3483,28 @@
           // ===== SEARCH FUNCTIONALITY =====
 
           /**
-           * Search for students as user types
+           * Load all students for dropdown (called on focus)
            */
-          searchStudents() {
-            // Clear previous timeout
-            if (this.searchTimeout) {
-              clearTimeout(this.searchTimeout);
+          showAllStudents() {
+            // If we haven't loaded students yet, load them
+            if (!this.studentsLoaded) {
+              this.loadAllStudents();
+            } else {
+              // Show all students if no search term
+              if (!this.searchTerm || this.searchTerm.trim() === '') {
+                this.searchResults = [...this.allStudents];
+              } else {
+                this.filterStudents();
+              }
+              this.showSearchResults = true;
+              this.highlightedIndex = -1;
             }
-
-            // Don't search if term is too short
-            if (!this.searchTerm || this.searchTerm.trim().length < 2) {
-              this.searchResults = [];
-              this.showSearchResults = false;
-              return;
-            }
-
-            // Debounce search to avoid too many API calls
-            this.searchTimeout = setTimeout(() => {
-              this.performSearch();
-            }, 300);
           },
 
           /**
-           * Perform the actual search API call
+           * Load all students from the server
            */
-          performSearch() {
+          loadAllStudents() {
             this.isSearching = true;
             
             google.script.run
@@ -3624,22 +3512,76 @@
                 this.isSearching = false;
                 
                 if (response && response.success) {
-                  this.searchResults = response.students || [];
+                  this.allStudents = response.students || [];
+                  this.studentsLoaded = true;
+                  this.searchResults = [...this.allStudents];
                   this.showSearchResults = true;
-                  console.log(`Found ${this.searchResults.length} students matching "${this.searchTerm}"`);
+                  console.log(`Loaded ${this.allStudents.length} students for dropdown`);
                 } else {
-                  console.error('Search failed:', response?.error);
+                  console.error('Failed to load students:', response?.error);
                   this.searchResults = [];
                   this.showSearchResults = false;
                 }
               })
               .withFailureHandler((error) => {
                 this.isSearching = false;
-                console.error('Search API call failed:', error);
+                console.error('API call failed to load students:', error);
                 this.searchResults = [];
                 this.showSearchResults = false;
               })
-              .api_searchStudents(this.searchTerm.trim());
+              .api_getAllStudents();
+          },
+
+          /**
+           * Filter students based on search term (client-side filtering)
+           */
+          filterStudents() {
+            if (!this.studentsLoaded) {
+              this.showAllStudents();
+              return;
+            }
+
+            const searchTerm = this.searchTerm.trim().toLowerCase();
+            
+            if (!searchTerm) {
+              // Show all students if no search term
+              this.searchResults = [...this.allStudents];
+            } else {
+              // Filter students client-side
+              this.searchResults = this.allStudents.filter(student => {
+                const fullName = student.name.toLowerCase();
+                const nameParts = fullName.split(' ');
+                
+                // Check if search term matches:
+                // 1. Start of full name
+                // 2. Start of first name  
+                // 3. Start of last name
+                // 4. Anywhere in full name (for partial matches)
+                return fullName.startsWith(searchTerm) ||
+                       nameParts.some(part => part.startsWith(searchTerm)) ||
+                       fullName.includes(searchTerm);
+              });
+
+              // Sort results by relevance (exact matches first, then partial)
+              this.searchResults.sort((a, b) => {
+                const aName = a.name.toLowerCase();
+                const bName = b.name.toLowerCase();
+                
+                // Exact start matches first
+                const aStartsWithSearch = aName.startsWith(searchTerm);
+                const bStartsWithSearch = bName.startsWith(searchTerm);
+                
+                if (aStartsWithSearch && !bStartsWithSearch) return -1;
+                if (!aStartsWithSearch && bStartsWithSearch) return 1;
+                
+                // Then alphabetical
+                return aName.localeCompare(bName);
+              });
+            }
+            
+            this.showSearchResults = true;
+            this.highlightedIndex = -1; // Reset highlight when filtering
+            console.log(`Filtered to ${this.searchResults.length} students`);
           },
 
           /**
@@ -3648,7 +3590,7 @@
           selectStudent(student) {
             console.log('Selected student:', student);
             
-            // Hide search results
+            // Hide search results and clear search
             this.showSearchResults = false;
             this.searchTerm = "";
             this.searchResults = [];
@@ -3674,6 +3616,27 @@
 
             this.students.push(newStudent);
             console.log(`Added ${student.name} to active management`);
+
+            // Show success feedback
+            const successMessage = document.createElement('div');
+            successMessage.textContent = `✓ ${student.name} added to active management`;
+            successMessage.style.cssText = `
+              position: fixed;
+              top: 20px;
+              right: 20px;
+              background: #4caf50;
+              color: white;
+              padding: 12px 20px;
+              border-radius: 4px;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+              z-index: 10000;
+              font-weight: 500;
+            `;
+            document.body.appendChild(successMessage);
+            
+            setTimeout(() => {
+              successMessage.remove();
+            }, 3000);
 
             // Scroll to the table so user can see the new student
             setTimeout(() => {
@@ -3703,7 +3666,33 @@
           hideSearchResults() {
             setTimeout(() => {
               this.showSearchResults = false;
+              this.highlightedIndex = -1;
             }, 200); // Small delay to allow click events to fire
+          },
+
+          /**
+           * Keyboard navigation - highlight next item
+           */
+          highlightNext() {
+            if (this.searchResults.length === 0) return;
+            this.highlightedIndex = Math.min(this.highlightedIndex + 1, this.searchResults.length - 1);
+          },
+
+          /**
+           * Keyboard navigation - highlight previous item
+           */
+          highlightPrevious() {
+            if (this.searchResults.length === 0) return;
+            this.highlightedIndex = Math.max(this.highlightedIndex - 1, -1);
+          },
+
+          /**
+           * Keyboard navigation - select highlighted item
+           */
+          selectHighlighted() {
+            if (this.highlightedIndex >= 0 && this.highlightedIndex < this.searchResults.length) {
+              this.selectStudent(this.searchResults[this.highlightedIndex]);
+            }
           },
 
         };
