@@ -420,7 +420,7 @@
   </head>
 
   <body>
-    <div class="container" x-data="appData()" x-init="init()">
+    <div class="container" x-data="appData()" x-init="init()" @click.away="hideSearchResults()">
       <!-- Sticky header with date, period, and teacher info -->
       <div class="sticky-header">
         <h1>Northside Alternative MS</h1>
@@ -471,11 +471,85 @@
         </div>
       </div>
 
-      <!-- Tables side by side -->
+      <!-- Student Search Section -->
       <div class="row">
-        <!-- Main table column -->
+        <div class="col s12">
+          <div class="card-panel" style="padding: 15px">
+            <h5 style="margin-top: 0">Add Student to Restroom Management</h5>
+            
+            <!-- Search Input -->
+            <div style="position: relative; margin-bottom: 15px">
+              <input 
+                type="text" 
+                x-model="searchTerm"
+                @input="searchStudents()"
+                @focus="showSearchResults = true"
+                placeholder="Search for student by first or last name..."
+                style="
+                  width: 100%; 
+                  padding: 12px; 
+                  border: 2px solid #ddd; 
+                  border-radius: 4px; 
+                  font-size: 16px;
+                  box-sizing: border-box;
+                "
+              />
+              
+              <!-- Search Results Dropdown -->
+              <div 
+                x-show="showSearchResults && searchResults.length > 0"
+                style="
+                  position: absolute;
+                  top: 100%;
+                  left: 0;
+                  right: 0;
+                  background: white;
+                  border: 1px solid #ddd;
+                  border-top: none;
+                  border-radius: 0 0 4px 4px;
+                  max-height: 200px;
+                  overflow-y: auto;
+                  z-index: 1000;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                "
+              >
+                <template x-for="student in searchResults" :key="student.name">
+                  <div 
+                    @click="selectStudent(student)"
+                    style="
+                      padding: 10px 12px;
+                      cursor: pointer;
+                      border-bottom: 1px solid #f0f0f0;
+                    "
+                    :style="{ 'background-color': $el.matches(':hover') ? '#f5f5f5' : 'white' }"
+                    @mouseenter="$el.style.backgroundColor = '#f5f5f5'"
+                    @mouseleave="$el.style.backgroundColor = 'white'"
+                  >
+                    <strong x-text="student.name"></strong>
+                    <span x-show="student.id" style="color: #666; margin-left: 8px">
+                      (ID: <span x-text="student.id"></span>)
+                    </span>
+                  </div>
+                </template>
+              </div>
+            </div>
+            
+            <!-- Search Status -->
+            <div x-show="searchTerm && searchResults.length === 0 && !isSearching" style="color: #666; font-style: italic;">
+              No students found matching "<span x-text="searchTerm"></span>"
+            </div>
+            <div x-show="isSearching" style="color: #666; font-style: italic;">
+              Searching...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Students and Queue Tables -->
+      <div class="row">
+        <!-- Active Students table column -->
         <div class="col s8">
-          <h5>Student Management</h5>
+          <h5>Active Students</h5>
 
           <div class="table-container" style="position: relative">
             <!-- Loading Spinner Overlay -->
@@ -509,16 +583,25 @@
               </p>
             </div>
 
-            <table class="striped" :class="{ 'loading-blur': isLoading }">
+            <!-- No Active Students Message -->
+            <div x-show="!isLoading && students.length === 0" style="text-align: center; padding: 40px; color: #666;">
+              <i class="material-icons" style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;">search</i>
+              <h6>No Active Students</h6>
+              <p>Search for a student above to add them to restroom management.</p>
+            </div>
+
+            <!-- Active Students Table -->
+            <table x-show="students.length > 0" class="striped" :class="{ 'loading-blur': isLoading }">
               <thead>
                 <tr>
                   <th>Student Name</th>
                   <th>Gender</th>
                   <th>Teacher</th>
-                  <th>Status 1</th>
+                  <th>Request Status</th>
                   <th>Out Time</th>
-                  <th>Status 2</th>
+                  <th>Return Status</th>
                   <th>Back Time</th>
+                  <th>Remove</th>
                 </tr>
               </thead>
               <tbody>
@@ -580,6 +663,16 @@
                     </td>
                     <td>
                       <span x-text="formatTime(stu.backTime)"></span>
+                    </td>
+                    <td>
+                      <button
+                        class="btn"
+                        style="background-color: #f44336; color: white; padding: 4px 8px; font-size: 12px;"
+                        @click="removeStudent(stu)"
+                        title="Remove student from active management"
+                      >
+                        <i class="material-icons" style="font-size: 16px;">close</i>
+                      </button>
                     </td>
                   </tr>
                 </template>
@@ -765,76 +858,26 @@
               google.script &&
               google.script.run.api_getStatusUpdatesOptimized
             ) {
-              google.script.run
-                .withSuccessHandler((updateInfo) => {
-                  const hasUpdates =
-                    updateInfo && updateInfo.success && updateInfo.hasUpdates;
+              // Simplified polling - just trigger a full refresh
+              console.log("SmartPollingManager: Triggering full refresh (no incremental updates)");
+              
+              // Always trigger update callback for full refresh
+              if (this.callbacks.onUpdate) {
+                this.callbacks.onUpdate({
+                  hasUpdates: true,
+                  fallback: true,
+                  fullRefresh: true
+                });
+              }
 
-                  if (hasUpdates) {
-                    console.log(
-                      "SmartPollingManager: Updates detected via optimized endpoint",
-                    );
-                    console.log(
-                      `Changed students: ${updateInfo.changedStudents?.length || 0}`,
-                    );
-                    this.stats.updatesFound++;
-                    this.stats.lastUpdateTime = now;
-                    this.consecutiveNoChanges = 0;
-
-                    // Update last update timestamp for next check
-                    this.lastUpdateTimestamp = updateInfo.timestamp || now;
-
-                    // Trigger update callback
-                    if (this.callbacks.onUpdate) {
-                      this.callbacks.onUpdate(updateInfo);
-                    }
-                  } else {
-                    console.log("SmartPollingManager: No updates detected");
-                    this.consecutiveNoChanges++;
-
-                    // Update timestamp even if no changes
-                    if (updateInfo && updateInfo.timestamp) {
-                      this.lastUpdateTimestamp = updateInfo.timestamp;
-                    }
-                  }
-
-                  // Schedule next check based on results
-                  this._scheduleNextCheck();
-                  this.isCheckingForUpdates = false; // Clear the flag
-                  resolve(updateInfo);
-                })
-                .withFailureHandler((error) => {
-                  console.warn(
-                    "SmartPollingManager: Optimized update check failed:",
-                    error,
-                  );
-                  console.log(
-                    "SmartPollingManager: Falling back to full refresh...",
-                  );
-
-                  // Fallback: trigger a full refresh
-                  if (this.callbacks.onUpdate) {
-                    this.callbacks.onUpdate({
-                      hasUpdates: true,
-                      fallback: true,
-                      error: error.message,
-                    });
-                  }
-
-                  this.consecutiveNoChanges++;
-
-                  // Schedule next check with longer interval on error
-                  this._scheduleNextCheck(this._getOptimalInterval() * 1.5);
-                  this.isCheckingForUpdates = false; // Clear the flag
-                  resolve({
-                    hasUpdates: true,
-                    fallback: true,
-                    error: error.message,
-                  });
-                })
-                .api_getStatusUpdatesOptimized(
-                  lastUpdateTimestamp || this.lastUpdateTimestamp || 0,
-                );
+              // Schedule next check
+              this._scheduleNextCheck();
+              this.isCheckingForUpdates = false;
+              resolve({
+                hasUpdates: true,
+                fallback: true,
+                fullRefresh: true
+              });
             } else {
               // Fallback: just trigger a regular update
               console.log(
@@ -1646,6 +1689,13 @@
           lastUpdateTimestamp: 0,
           refreshInterval: null,
 
+          // Search functionality
+          searchTerm: "",
+          searchResults: [],
+          showSearchResults: false,
+          isSearching: false,
+          searchTimeout: null,
+
           // Initialize LocalDataCache instance
           localCache: new LocalDataCache(),
 
@@ -2155,59 +2205,49 @@
 
           refreshData() {
             console.log(
-              "refreshData() called - loading fresh data for accurate status",
+              "refreshData() called - loading active students",
             );
 
-            // For initial load, always get fresh data to ensure log status is current
-            // This prevents the "blue button" problem where cached data lacks log info
+            // Load only active students (those currently being managed)
             this.isLoading = true;
-            this.loadingMessage = "Loading current student status...";
+            this.loadingMessage = "Loading active students...";
             this.loadStartTime = Date.now();
 
             google.script.run
               .withSuccessHandler((response) => {
                 const responseTime = Date.now() - this.loadStartTime;
                 console.log(
-                  "✓ Initial fresh data loaded successfully:",
+                  "✓ Active students loaded successfully:",
                   response,
                 );
-                console.log(`📊 Initial load response time: ${responseTime}ms`);
+                console.log(`📊 Load response time: ${responseTime}ms`);
 
                 if (
                   response &&
                   response.success &&
-                  response.data &&
-                  response.data.students
+                  response.data
                 ) {
                   console.log(
-                    `Fresh load: ${response.metadata.freshLoad}, Students: ${response.metadata.studentCount}`,
+                    `Active students: ${response.metadata.activeStudentCount}`,
                   );
                   this._handleStudentDataSuccess(response.data);
 
                   // Start smart polling after successful initial load
                   this.startSmartRefresh();
                 } else {
-                  console.warn(
-                    "Fresh data endpoint failed on initial load, falling back to cached endpoint",
-                  );
-                  this.loadingMessage = "Trying cached data...";
-                  this._fetchStudentDataFromServer();
+                  console.warn("Active students endpoint failed:", response?.error);
+                  this.isLoading = false;
+                  this.loadingMessage = "";
                 }
               })
               .withFailureHandler((error) => {
                 const responseTime = Date.now() - this.loadStartTime;
-                console.error(
-                  "Fresh data endpoint failed on initial load:",
-                  error,
-                );
-                console.log(
-                  `📊 Failed initial load response time: ${responseTime}ms`,
-                );
-                console.log("Falling back to cached endpoint...");
-                this.loadingMessage = "Trying cached data...";
-                this._fetchStudentDataFromServer();
+                console.error("Active students endpoint failed:", error);
+                console.log(`📊 Failed load response time: ${responseTime}ms`);
+                this.isLoading = false;
+                this.loadingMessage = "";
               })
-              .api_getFreshStudentData();
+              .api_getActiveStudents();
           },
 
           _fetchStudentDataFromServer() {
@@ -2270,7 +2310,7 @@
                 this.loadingMessage = "Trying fallback method...";
                 this.fallbackToMinimalBypass();
               })
-              .api_getCachedStudentData();
+              .api_getFreshStudentData();
           },
 
           _fetchStudentDataInBackground() {
@@ -2315,7 +2355,7 @@
                   error,
                 );
               })
-              .api_getCachedStudentData();
+              .api_getFreshStudentData();
           },
 
           _handleStudentDataSuccess(data, showLoading = true) {
@@ -3412,7 +3452,7 @@
                   updateId,
                 );
               })
-              .api_updateStudentStatusOptimized(
+              .api_updateStatus(
                 stu.name,
                 "out",
                 stu.teacher,
@@ -3541,13 +3581,131 @@
                   updateId,
                 );
               })
-              .api_updateStudentStatusOptimized(
+              .api_updateStatus(
                 stu.name,
                 "back",
                 stu.teacher,
                 stu.gender,
               );
           },
+
+          // ===== SEARCH FUNCTIONALITY =====
+
+          /**
+           * Search for students as user types
+           */
+          searchStudents() {
+            // Clear previous timeout
+            if (this.searchTimeout) {
+              clearTimeout(this.searchTimeout);
+            }
+
+            // Don't search if term is too short
+            if (!this.searchTerm || this.searchTerm.trim().length < 2) {
+              this.searchResults = [];
+              this.showSearchResults = false;
+              return;
+            }
+
+            // Debounce search to avoid too many API calls
+            this.searchTimeout = setTimeout(() => {
+              this.performSearch();
+            }, 300);
+          },
+
+          /**
+           * Perform the actual search API call
+           */
+          performSearch() {
+            this.isSearching = true;
+            
+            google.script.run
+              .withSuccessHandler((response) => {
+                this.isSearching = false;
+                
+                if (response && response.success) {
+                  this.searchResults = response.students || [];
+                  this.showSearchResults = true;
+                  console.log(`Found ${this.searchResults.length} students matching "${this.searchTerm}"`);
+                } else {
+                  console.error('Search failed:', response?.error);
+                  this.searchResults = [];
+                  this.showSearchResults = false;
+                }
+              })
+              .withFailureHandler((error) => {
+                this.isSearching = false;
+                console.error('Search API call failed:', error);
+                this.searchResults = [];
+                this.showSearchResults = false;
+              })
+              .api_searchStudents(this.searchTerm.trim());
+          },
+
+          /**
+           * Select a student from search results
+           */
+          selectStudent(student) {
+            console.log('Selected student:', student);
+            
+            // Hide search results
+            this.showSearchResults = false;
+            this.searchTerm = "";
+            this.searchResults = [];
+
+            // Check if student is already in active list
+            const existingStudent = this.students.find(s => s.name === student.name);
+            if (existingStudent) {
+              alert(`${student.name} is already in the active management list.`);
+              return;
+            }
+
+            // Add student to active list with default values
+            const newStudent = {
+              name: student.name,
+              id: student.id,
+              nameId: student.name,
+              gender: "",
+              teacher: this.detectedTeacher || "",
+              outTime: "",
+              backTime: "",
+              holdNotice: ""
+            };
+
+            this.students.push(newStudent);
+            console.log(`Added ${student.name} to active management`);
+
+            // Scroll to the table so user can see the new student
+            setTimeout(() => {
+              const table = document.querySelector('.table-container');
+              if (table) {
+                table.scrollIntoView({ behavior: 'smooth' });
+              }
+            }, 100);
+          },
+
+          /**
+           * Remove a student from active management
+           */
+          removeStudent(student) {
+            if (confirm(`Remove ${student.name} from active management?`)) {
+              const index = this.students.findIndex(s => s.name === student.name);
+              if (index !== -1) {
+                this.students.splice(index, 1);
+                console.log(`Removed ${student.name} from active management`);
+              }
+            }
+          },
+
+          /**
+           * Hide search results when clicking outside
+           */
+          hideSearchResults() {
+            setTimeout(() => {
+              this.showSearchResults = false;
+            }, 200); // Small delay to allow click events to fire
+          },
+
         };
       }
     </script>

@@ -4894,3 +4894,197 @@ function api_getFreshStudentData() {
 
 
 
+
+/**
+ * Search for students by name (first or last name)
+ * Returns matching students from the daily roster sheet
+ * @param {string} searchTerm - The search term (partial name)
+ * @returns {Array} - Array of matching students with name and id
+ */
+function api_searchStudents(searchTerm) {
+  try {
+    console.log(`=== api_searchStudents called with term: "${searchTerm}" ===`);
+    
+    if (!searchTerm || searchTerm.trim().length < 1) {
+      return {
+        success: true,
+        students: [],
+        message: "Search term too short"
+      };
+    }
+    
+    const searchLower = searchTerm.trim().toLowerCase();
+    
+    // Get fresh roster from daily sheet
+    const dailySheet = getLatestDailySheet();
+    const roster = _getStudentRoster(dailySheet);
+    
+    console.log(`Searching ${roster.length} students for term: "${searchTerm}"`);
+    
+    // Search by first name, last name, or full name
+    const matchingStudents = roster.filter(student => {
+      const fullName = student.name.toLowerCase();
+      const nameParts = fullName.split(' ');
+      
+      // Check if search term matches:
+      // 1. Start of full name
+      // 2. Start of first name
+      // 3. Start of last name
+      // 4. Anywhere in full name (for partial matches)
+      return fullName.startsWith(searchLower) ||
+             nameParts.some(part => part.startsWith(searchLower)) ||
+             fullName.includes(searchLower);
+    });
+    
+    // Sort results by relevance (exact matches first, then partial)
+    matchingStudents.sort((a, b) => {
+      const aName = a.name.toLowerCase();
+      const bName = b.name.toLowerCase();
+      
+      // Exact start matches first
+      const aStartsWithSearch = aName.startsWith(searchLower);
+      const bStartsWithSearch = bName.startsWith(searchLower);
+      
+      if (aStartsWithSearch && !bStartsWithSearch) return -1;
+      if (!aStartsWithSearch && bStartsWithSearch) return 1;
+      
+      // Then alphabetical
+      return aName.localeCompare(bName);
+    });
+    
+    // Limit results to prevent UI overload
+    const limitedResults = matchingStudents.slice(0, 10);
+    
+    console.log(`Found ${matchingStudents.length} matches, returning ${limitedResults.length}`);
+    
+    return {
+      success: true,
+      students: limitedResults,
+      totalMatches: matchingStudents.length,
+      searchTerm: searchTerm
+    };
+    
+  } catch (error) {
+    console.error('Error in api_searchStudents:', error);
+    return {
+      success: false,
+      error: error.message,
+      students: []
+    };
+  }
+}
+
+/**
+ * Get the current active students (those who have been added to the management table)
+ * This replaces the full roster view with only students currently being managed
+ * @returns {Object} - Active students and their current status
+ */
+function api_getActiveStudents() {
+  try {
+    console.log('=== api_getActiveStudents called ===');
+    
+    // Get today's log entries to find students who have activity today
+    const status = _getCurrentRestroomStatusFallback();
+    const activeStudents = [];
+    const queue = { girls: [], boys: [] };
+    
+    // Convert status object to array of active students
+    for (const [studentName, studentStatus] of Object.entries(status)) {
+      const studentData = {
+        name: studentName,
+        id: studentStatus.id || "",
+        nameId: studentName,
+        gender: studentStatus.gender || "",
+        teacher: studentStatus.teacher || "",
+        outTime: studentStatus.outTime || "",
+        backTime: studentStatus.backTime || "",
+        holdNotice: studentStatus.holdNotice || ""
+      };
+      
+      activeStudents.push(studentData);
+      
+      // Build queue lists
+      if (studentStatus.holdNotice && !studentStatus.outTime) {
+        if (studentStatus.gender === "G") queue.girls.push(studentName);
+        else if (studentStatus.gender === "B") queue.boys.push(studentName);
+      }
+    }
+    
+    console.log(`Found ${activeStudents.length} active students`);
+    
+    return {
+      success: true,
+      data: {
+        students: activeStudents,
+        queue: queue
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: activeStudents.length,
+        queueCount: queue.girls.length + queue.boys.length
+      }
+    };
+    
+  } catch (error) {
+    console.error('Error in api_getActiveStudents:', error);
+    return {
+      success: false,
+      error: error.message,
+      data: {
+        students: [],
+        queue: { girls: [], boys: [] }
+      }
+    };
+  }
+}
+
+/**
+ * Add a student to the active management table
+ * This creates an initial entry for the student so they appear in the management interface
+ * @param {string} studentName - Name of the student to add
+ * @param {string} studentId - ID of the student
+ * @param {string} teacherName - Name of the teacher adding the student
+ * @returns {Object} - Result of adding the student
+ */
+function api_addStudentToActive(studentName, studentId, teacherName) {
+  try {
+    console.log(`=== api_addStudentToActive called: ${studentName} ===`);
+    
+    if (!studentName || !teacherName) {
+      throw new Error("Student name and teacher name are required");
+    }
+    
+    // Check if student is already active today
+    const currentStatus = _getCurrentRestroomStatusFallback();
+    if (currentStatus[studentName]) {
+      console.log(`Student ${studentName} is already active today`);
+      return {
+        success: true,
+        message: "Student is already in the active list",
+        alreadyActive: true
+      };
+    }
+    
+    // For now, just return success - the actual "add to active" will happen
+    // when they first request the restroom. This endpoint confirms the student
+    // exists and can be added.
+    console.log(`Student ${studentName} ready to be added to active management`);
+    
+    return {
+      success: true,
+      message: "Student ready for restroom management",
+      student: {
+        name: studentName,
+        id: studentId,
+        teacher: teacherName
+      }
+    };
+    
+  } catch (error) {
+    console.error('Error in api_addStudentToActive:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
