@@ -320,6 +320,14 @@ class CachedRosterService {
   }
 
   /**
+   * Clear the roster cache (useful for midnight resets)
+   */
+  clearRosterCache() {
+    console.log("CachedRosterService: Clearing roster cache...");
+    this.cacheManager.invalidate(this.ROSTER_CACHE_KEY);
+  }
+
+  /**
    * Get cached restroom status, loading from log if cache is invalid
    * @returns {Object} - Object with student names as keys and status as values
    */
@@ -1405,15 +1413,15 @@ const logProcessingService = new LogProcessingService();
  */
 function _getCurrentRestroomStatus() {
   try {
-    console.log("_getCurrentRestroomStatus: Starting optimized version...");
+    console.log("_getCurrentRestroomStatus: Starting direct Log sheet read...");
 
     const timerId = performanceMonitor.startTimer("getCurrentRestroomStatus");
 
-    // Use the optimized LogProcessingService for status lookup
-    const statusLookup = logProcessingService.getAllStudentStatuses();
+    // Read directly from Log sheet - no caching
+    const statusLookup = _getCurrentRestroomStatusDirect();
 
     console.log(
-      `Optimized status loaded for ${Object.keys(statusLookup).length} students`,
+      `Direct status loaded for ${Object.keys(statusLookup).length} students`,
     );
 
     performanceMonitor.endTimer(timerId, {
@@ -1422,7 +1430,7 @@ function _getCurrentRestroomStatus() {
 
     return statusLookup;
   } catch (error) {
-    console.error("Error in optimized _getCurrentRestroomStatus:", error);
+    console.error("Error in direct _getCurrentRestroomStatus:", error);
 
     // Fallback to basic implementation with error handling
     try {
@@ -1704,21 +1712,8 @@ function updateStatus(studentName, action, teacherName, gender) {
         console.log("Waiting entry updated to out successfully");
 
         // IMMEDIATELY invalidate caches after updating waiting entry to out
-        try {
-          console.log(
-            "Immediately invalidating caches after waiting->out update...",
-          );
-          const logService = new LogProcessingService();
-          logService.invalidateLogCaches();
-          console.log(
-            "✓ Caches invalidated immediately after waiting->out update",
-          );
-        } catch (cacheError) {
-          console.warn(
-            "⚠️ Failed to invalidate caches immediately:",
-            cacheError,
-          );
-        }
+        // No cache invalidation needed - using direct Log sheet access
+        console.log("✓ Waiting entry updated to out successfully");
       } else {
         console.log("Checking if restroom is available for gender:", gender);
         // Normal flow - check if restroom is free for that gender
@@ -1753,19 +1748,8 @@ function updateStatus(studentName, action, teacherName, gender) {
           console.log("Waiting entry logged successfully");
 
           // IMMEDIATELY invalidate caches after logging waiting entry
-          try {
-            console.log(
-              "Immediately invalidating caches after waiting entry...",
-            );
-            const logService = new LogProcessingService();
-            logService.invalidateLogCaches();
-            console.log("✓ Caches invalidated immediately after waiting entry");
-          } catch (cacheError) {
-            console.warn(
-              "⚠️ Failed to invalidate caches immediately:",
-              cacheError,
-            );
-          }
+          // No cache invalidation needed - using direct Log sheet access
+          console.log("✓ Waiting entry logged successfully");
         } else {
           console.log("Restroom available, marking student out");
           // Mark student as out - log the out entry
@@ -1780,17 +1764,8 @@ function updateStatus(studentName, action, teacherName, gender) {
           console.log("Out entry logged successfully");
 
           // IMMEDIATELY invalidate caches after logging out entry
-          try {
-            console.log("Immediately invalidating caches after out entry...");
-            const logService = new LogProcessingService();
-            logService.invalidateLogCaches();
-            console.log("✓ Caches invalidated immediately after out entry");
-          } catch (cacheError) {
-            console.warn(
-              "⚠️ Failed to invalidate caches immediately:",
-              cacheError,
-            );
-          }
+          // No cache invalidation needed - using direct Log sheet access
+          console.log("✓ Out entry logged successfully");
         }
       }
     } catch (logError) {
@@ -1802,14 +1777,8 @@ function updateStatus(studentName, action, teacherName, gender) {
     _logBackEntry(studentName, studentId, gender, teacherName, now);
 
     // IMMEDIATELY invalidate caches after logging back entry
-    try {
-      console.log("Immediately invalidating caches after back entry...");
-      const logService = new LogProcessingService();
-      logService.invalidateLogCaches();
-      console.log("✓ Caches invalidated immediately after back entry");
-    } catch (cacheError) {
-      console.warn("⚠️ Failed to invalidate caches immediately:", cacheError);
-    }
+    // No cache invalidation needed - using direct Log sheet access
+    console.log("✓ Back entry logged successfully");
 
     // REMOVED: No longer automatically promote the next person in queue
     // The next student will be highlighted in the UI and manually marked out by the teacher
@@ -4303,17 +4272,13 @@ function api_updateStudentStatusOptimized(
           }
         }
 
-        // Immediately invalidate caches after any log operation
-        const logService = new LogProcessingService();
-        logService.invalidateLogCaches();
+        // No cache invalidation needed - using direct Log sheet access
       } else if (action === "back") {
         // For "back" action, use the proper _logBackEntry function to update existing entry
         console.log("Marking student back using proper log entry update");
         _logBackEntry(studentName, studentId, gender, teacherName, new Date());
 
-        // Immediately invalidate caches after back entry
-        const logService = new LogProcessingService();
-        logService.invalidateLogCaches();
+        // No cache invalidation needed - using direct Log sheet access
       } else {
         // For other actions (like "hold"), use batch update
         const logService = new LogProcessingService();
@@ -5609,13 +5574,13 @@ function api_getActiveStudents() {
     const status = _getCurrentRestroomStatusFallback();
     console.log("Status object:", status);
     console.log("Status keys:", Object.keys(status));
-    
+
     const activeStudents = [];
 
     // Convert status object to array of active students
     for (const [studentName, studentStatus] of Object.entries(status)) {
       console.log(`Processing student: ${studentName}`, studentStatus);
-      
+
       const studentData = {
         name: studentName,
         id: studentStatus.id || "",
@@ -5642,14 +5607,13 @@ function api_getActiveStudents() {
         activeStudentCount: activeStudents.length,
       },
     };
-    
+
     console.log("Returning result:", result);
     return result;
-    
   } catch (error) {
     console.error("Error in api_getActiveStudents:", error);
     console.error("Error stack:", error.stack);
-    
+
     const errorResult = {
       success: false,
       error: error.message || "Unknown error",
@@ -5657,7 +5621,7 @@ function api_getActiveStudents() {
         students: [],
       },
     };
-    
+
     console.log("Returning error result:", errorResult);
     return errorResult;
   }
@@ -5668,21 +5632,21 @@ function api_getActiveStudents() {
  */
 function api_testActiveStudents() {
   console.log("=== Testing api_getActiveStudents ===");
-  
+
   try {
     const result = api_getActiveStudents();
     console.log("Test result:", result);
     return {
       success: true,
       message: "api_getActiveStudents test completed",
-      result: result
+      result: result,
     };
   } catch (error) {
     console.error("Test failed:", error);
     return {
       success: false,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     };
   }
 }
@@ -5737,4 +5701,346 @@ function api_addStudentToActive(studentName, studentId, teacherName) {
       error: error.message,
     };
   }
+}
+/**
+ * Midnight Reset Function - Automatically clears daily roster cache
+ * This function should be triggered daily at midnight on weekdays
+ * to ensure fresh roster data is loaded from the current day's sheet
+ */
+function midnightRosterReset() {
+  try {
+    console.log("=== MIDNIGHT ROSTER RESET STARTED ===");
+    console.log("Time:", new Date().toISOString());
+
+    // Check if it's a weekday (Monday = 1, Friday = 5)
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      console.log("Weekend detected - skipping roster reset");
+      return {
+        success: true,
+        message: "Skipped - Weekend",
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    console.log(`Weekday detected (${dayOfWeek}) - proceeding with reset`);
+
+    // No cache clearing needed - system reads directly from sheets
+    console.log("✓ Using direct sheet access - no cache to clear");
+
+    // Test that we can access today's roster (uses fallback logic if today's sheet doesn't exist)
+    let rosterInfo = { studentsLoaded: 0, sheetUsed: "unknown" };
+    try {
+      // This will automatically use getLatestDailySheet() which has built-in fallback logic
+      const simpleService = new SimpleRosterService();
+      const todaysRoster = simpleService.getRoster();
+      rosterInfo.studentsLoaded = todaysRoster.length;
+
+      // Get info about which sheet was actually used
+      const actualSheet = getLatestDailySheet();
+      rosterInfo.sheetUsed = actualSheet.getName();
+
+      console.log(
+        `✓ Roster pre-loaded: ${rosterInfo.studentsLoaded} students from sheet "${rosterInfo.sheetUsed}"`,
+      );
+
+      // Check if we're using a fallback sheet (not today's date)
+      const today = new Date();
+      const todayString = `${today.getMonth() + 1}/${today.getDate()}`;
+
+      if (!rosterInfo.sheetUsed.includes(todayString)) {
+        console.log(
+          `ℹ️  Note: Today's sheet (${todayString}) not found, using most recent available: "${rosterInfo.sheetUsed}"`,
+        );
+      }
+    } catch (preloadError) {
+      console.warn("Could not pre-load roster:", preloadError.message);
+      rosterInfo.error = preloadError.message;
+    }
+
+    console.log("=== MIDNIGHT ROSTER RESET COMPLETED ===");
+
+    return {
+      success: true,
+      message: "Roster reset completed successfully",
+      timestamp: new Date().toISOString(),
+      studentsLoaded: rosterInfo.studentsLoaded,
+      sheetUsed: rosterInfo.sheetUsed,
+      fallbackUsed:
+        rosterInfo.sheetUsed !== "unknown" &&
+        !rosterInfo.sheetUsed.includes(
+          `${new Date().getMonth() + 1}/${new Date().getDate()}`,
+        ),
+      error: rosterInfo.error,
+    };
+  } catch (error) {
+    console.error("Error in midnightRosterReset:", error);
+    return {
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
+/**
+ * Manual trigger for testing the midnight reset function
+ * Can be called from the Apps Script editor for testing
+ */
+function testMidnightReset() {
+  console.log("=== TESTING MIDNIGHT RESET ===");
+  const result = midnightRosterReset();
+  console.log("Test result:", result);
+  return result;
+}
+
+// =============================================================================
+// SIMPLIFIED LOG FUNCTIONS - Direct Log sheet access without caching
+// =============================================================================
+
+/**
+ * Simple Roster Service - Direct sheet access only
+ */
+class SimpleRosterService {
+  /**
+   * Get student roster directly from the latest daily sheet
+   */
+  getRoster() {
+    console.log("SimpleRosterService: Getting roster from daily sheet...");
+    const dailySheet = getLatestDailySheet();
+    return _getStudentRoster(dailySheet);
+  }
+
+  /**
+   * Get current restroom status directly from Log sheet
+   */
+  getCurrentStatus() {
+    console.log("SimpleRosterService: Getting status from Log sheet...");
+    return _getCurrentRestroomStatusDirect();
+  }
+
+  /**
+   * Get combined roster and status data
+   */
+  getCombinedData() {
+    console.log("SimpleRosterService: Getting combined data...");
+    const roster = this.getRoster();
+    const status = this.getCurrentStatus();
+    return this._combineRosterAndStatus(roster, status);
+  }
+
+  /**
+   * Combine roster and status data (existing logic)
+   */
+  _combineRosterAndStatus(roster, status) {
+    return roster.map((student) => ({
+      name: student.name,
+      id: student.id,
+      gender: status[student.name]?.gender || "",
+      teacher: status[student.name]?.teacher || "",
+      outTime: status[student.name]?.outTime || "",
+      backTime: status[student.name]?.backTime || "",
+      holdNotice: status[student.name]?.holdNotice || "",
+    }));
+  }
+}
+
+/**
+ * Get today's log entries directly from Log sheet
+ * Replaces the cached version with direct read
+ */
+function getTodaysLogEntriesDirect() {
+  console.log("Getting today's log entries directly from Log sheet...");
+
+  const ss = getSpreadsheet();
+  const logSheet = ss.getSheetByName("Log");
+
+  if (!logSheet) {
+    console.log("No Log sheet found - returning empty array");
+    return [];
+  }
+
+  const data = logSheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    console.log("Log sheet is empty - returning empty array");
+    return [];
+  }
+
+  const today = new Date().toLocaleDateString();
+  const todaysEntries = [];
+
+  // Process from most recent to oldest for efficiency
+  // Skip header row (index 0)
+  for (let r = data.length - 1; r >= 1; r--) {
+    const row = data[r];
+    const date = row[0];
+    const studentName = row[1];
+
+    if (!studentName) continue;
+
+    // Efficient date filtering - stop when we hit yesterday's entries
+    const entryDate = date ? new Date(date).toLocaleDateString() : "";
+    if (entryDate !== today) {
+      // If we've been processing today's entries and now hit a different date, we're done
+      if (todaysEntries.length > 0) {
+        break;
+      }
+      continue;
+    }
+
+    // Build structured log entry
+    const logEntry = {
+      rowIndex: r,
+      date: entryDate,
+      studentName: studentName,
+      studentId: row[2] || "",
+      gender: row[3] || "",
+      teacher: row[4] || "",
+      outTime: row[5] || "",
+      backTime: row[6] || "",
+      holdNotice: row[7] || "",
+    };
+
+    todaysEntries.unshift(logEntry); // Add to beginning to maintain chronological order
+  }
+
+  console.log(`Found ${todaysEntries.length} log entries for today`);
+  return todaysEntries;
+}
+
+/**
+ * Get current restroom status directly from Log sheet
+ * Replaces the cached version with direct read
+ */
+function _getCurrentRestroomStatusDirect() {
+  console.log("Getting current restroom status directly from Log sheet...");
+
+  const todaysEntries = getTodaysLogEntriesDirect();
+  const statusLookup = {};
+
+  if (todaysEntries.length === 0) {
+    console.log("No log entries for today - all students available");
+    return statusLookup;
+  }
+
+  // Group entries by student name
+  const studentEntries = {};
+  for (const entry of todaysEntries) {
+    const studentName = entry.studentName;
+    if (!studentEntries[studentName]) {
+      studentEntries[studentName] = [];
+    }
+    studentEntries[studentName].push(entry);
+  }
+
+  // Process each student's entries to determine current status
+  for (const [studentName, entries] of Object.entries(studentEntries)) {
+    // Sort entries by row index (chronological order)
+    entries.sort((a, b) => a.rowIndex - b.rowIndex);
+
+    let currentStatus = {
+      gender: "",
+      teacher: "",
+      outTime: "",
+      backTime: "",
+      holdNotice: "",
+    };
+
+    // Process entries in chronological order to build the complete status
+    for (const entry of entries) {
+      // Update basic info from any entry
+      if (entry.gender) currentStatus.gender = entry.gender;
+      if (entry.teacher) currentStatus.teacher = entry.teacher;
+
+      // Determine current state based on entry type
+      if (entry.holdNotice && !entry.outTime) {
+        // Student is waiting in line
+        currentStatus.holdNotice = entry.holdNotice;
+        currentStatus.outTime = "";
+        currentStatus.backTime = "";
+      } else if (entry.outTime && !entry.backTime) {
+        // Student is currently out
+        currentStatus.outTime = entry.outTime;
+        currentStatus.backTime = "";
+        currentStatus.holdNotice = "";
+      } else if (entry.backTime) {
+        // Student has returned (available)
+        currentStatus.outTime = entry.outTime;
+        currentStatus.backTime = entry.backTime;
+        currentStatus.holdNotice = "";
+      }
+    }
+
+    statusLookup[studentName] = currentStatus;
+  }
+
+  console.log(
+    `Processed status for ${Object.keys(statusLookup).length} students`,
+  );
+  return statusLookup;
+}
+
+/**
+ * Simple batch log update - writes directly to Log sheet
+ */
+function batchUpdateLogsDirect(updates) {
+  console.log(
+    `Processing batch update of ${updates.length} entries directly...`,
+  );
+
+  const ss = getSpreadsheet();
+  let logSheet = ss.getSheetByName("Log");
+
+  // Create log sheet if it doesn't exist
+  if (!logSheet) {
+    logSheet = ss.insertSheet("Log");
+    logSheet.appendRow([
+      "Date",
+      "Student Name",
+      "Student ID",
+      "Gender",
+      "Teacher",
+      "Out Time",
+      "Back Time",
+      "Hold Notice",
+    ]);
+  }
+
+  const batchRows = [];
+  const now = new Date();
+  const date = now.toLocaleDateString();
+
+  for (const update of updates) {
+    const row = [
+      date,
+      update.studentName,
+      update.studentId,
+      update.gender,
+      update.teacher,
+      update.outTime || "",
+      update.backTime || "",
+      update.holdNotice || "",
+    ];
+    batchRows.push(row);
+  }
+
+  // Write all rows in a single batch operation
+  if (batchRows.length > 0) {
+    const range = logSheet.getRange(
+      logSheet.getLastRow() + 1,
+      1,
+      batchRows.length,
+      8,
+    );
+    range.setValues(batchRows);
+    console.log(`✓ Batch wrote ${batchRows.length} log entries`);
+  }
+
+  return {
+    success: true,
+    entriesProcessed: batchRows.length,
+    timestamp: now.toISOString(),
+  };
 }
