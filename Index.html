@@ -462,7 +462,7 @@
       <div class="row">
         <div class="col s12">
           <div class="card-panel" style="padding: 15px">
-            <h5 style="margin-top: 0">Add Student to Restroom Management</h5>
+            <h5 style="margin-top: 0">ADD STUDENT</h5>
             
             <!-- Search Input -->
             <div style="position: relative; margin-bottom: 15px">
@@ -559,11 +559,6 @@
                 </div>
               </div>
             </div>
-            
-            <!-- Search Help Text -->
-            <div x-show="!showSearchResults && !searchTerm" style="color: #666; font-size: 14px; margin-top: 8px;">
-              Click in the search box to see all students, or start typing to filter by name.
-            </div>
           </div>
         </div>
       </div>
@@ -572,7 +567,7 @@
       <div class="row">
         <!-- Active Students table column -->
         <div class="col s12">
-          <h5>Active Students</h5>
+          <h5>RESTROOM LIST</h5>
 
           <div class="table-container" style="position: relative">
             <!-- Loading Spinner Overlay -->
@@ -610,7 +605,6 @@
             <div x-show="!isLoading && students.length === 0" style="text-align: center; padding: 40px; color: #666;">
               <i class="material-icons" style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;">search</i>
               <h6>No Active Students</h6>
-              <p>Search for a student above to add them to restroom management.</p>
             </div>
 
             <!-- Active Students Table -->
