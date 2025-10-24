@@ -34,10 +34,8 @@ node_modules/
 /.next
 /out
 
-### VS Code
-.vscode/
+### Editor files
 .history/
-/vscode/**/history
 
 ### Google Apps Script / clasp
 .clasp.json
