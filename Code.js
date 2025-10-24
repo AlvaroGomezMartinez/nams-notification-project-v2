@@ -392,11 +392,29 @@ function fetchData() {
       `Queue - Girls: ${queue.girls.length}, Boys: ${queue.boys.length}`
     );
 
-    return { students: result, queue };
+    const finalResult = { students: result, queue };
+    console.log("fetchData: Returning result with", result.length, "students");
+    return finalResult;
   } catch (error) {
     console.error("Error in fetchData:", error);
     console.error("Error stack:", error.stack);
-    throw error;
+    
+    // Return error structure instead of throwing
+    return {
+      students: [
+        {
+          name: "Error: " + error.message,
+          id: "000",
+          nameId: "Error",
+          gender: "",
+          teacher: "",
+          outTime: "",
+          backTime: "",
+          holdNotice: "",
+        },
+      ],
+      queue: { girls: [], boys: [] },
+    };
   }
 }
 
@@ -408,6 +426,7 @@ function fetchData() {
  * @param {string} gender
  */
 function updateStatus(studentName, action, teacherName, gender) {
+  console.log("=== updateStatus START ===");
   console.log(
     `updateStatus called: ${studentName}, ${action}, ${teacherName}, ${gender}`
   );
@@ -522,6 +541,8 @@ function updateStatus(studentName, action, teacherName, gender) {
     _logBackEntry(studentName, studentId, gender, teacherName, now);
     console.log("✓ Back entry logged successfully");
   }
+  
+  console.log("=== updateStatus END (SUCCESS) ===");
 }
 
 /** Return true if a student of that gender is currently out (i.e. has an outTime but no backTime) */
@@ -1063,12 +1084,21 @@ function api_debugLogSheet() {
 }
 
 function api_updateStatus(studentName, action, teacherName, gender) {
-  console.log("API updateStatus called with:", {
-    studentName,
-    action,
-    teacherName,
-    gender,
-  });
+  // ULTIMATE FAILSAFE: Wrap entire function to prevent ANY null returns
+  try {
+    console.log("=== API updateStatus START ===");
+    console.log("API updateStatus called with:", {
+      studentName,
+      action,
+      teacherName,
+      gender,
+    });
+
+    // FAILSAFE: Ensure we NEVER return null
+    let finalResponse = {
+      success: false,
+      error: "Function completed without setting response"
+    };
 
   try {
     console.log("Step 1: Calling updateStatus...");
@@ -1076,19 +1106,79 @@ function api_updateStatus(studentName, action, teacherName, gender) {
     console.log("Step 2: updateStatus completed successfully");
 
     console.log("Step 3: Calling fetchData...");
-    const result = fetchData();
-    console.log("Step 4: fetchData completed, returning result");
+    let result;
+    try {
+      result = fetchData();
+      console.log("Step 4: fetchData completed, result type:", typeof result);
+      console.log("Step 4: fetchData result:", result);
+    } catch (fetchError) {
+      console.error("fetchData threw an error:", fetchError);
+      finalResponse = {
+        success: false,
+        error: `Failed to fetch updated data: ${fetchError.message}`
+      };
+      console.log("=== API updateStatus END (FETCH ERROR) ===");
+      console.log("Final response:", finalResponse);
+      return finalResponse;
+    }
 
-    return result;
+    // Check if result is null or undefined
+    if (!result) {
+      console.error("fetchData returned null or undefined");
+      finalResponse = {
+        success: false,
+        error: "fetchData returned null or undefined"
+      };
+    } else if (result.students && result.students.length === 1 && result.students[0].name && result.students[0].name.startsWith("Error:")) {
+      // Check if fetchData returned an error structure
+      const errorMessage = result.students[0].name.replace("Error: ", "");
+      console.error("fetchData returned error structure:", errorMessage);
+      finalResponse = {
+        success: false,
+        error: errorMessage,
+        data: result
+      };
+    } else {
+      // Return success structure with minimal data to avoid serialization issues
+      finalResponse = {
+        success: true,
+        message: "Student status updated successfully",
+        timestamp: new Date().toISOString(),
+        studentCount: result.students ? result.students.length : 0
+      };
+      console.log("Step 5: Setting success response:", finalResponse);
+    }
+    
+    console.log("=== API updateStatus END (SUCCESS PATH) ===");
+    console.log("Final response:", finalResponse);
+    return finalResponse;
   } catch (error) {
+    console.error("=== API updateStatus ERROR ===");
     console.error("Error in api_updateStatus:", error);
     console.error("Error message:", error.message);
     console.error("Error stack:", error.stack);
 
-    // Re-throw with more context
-    throw new Error(
-      `Failed to update status for ${studentName}: ${error.message}`
-    );
+    // Return structured error response instead of throwing
+    finalResponse = {
+      success: false,
+      error: error.message || "Unknown error occurred"
+    };
+    console.log("=== API updateStatus END (CATCH ERROR) ===");
+    console.log("Final response:", finalResponse);
+    return finalResponse;
+  }
+  
+  } catch (ultimateError) {
+    // ULTIMATE FAILSAFE: If anything goes wrong, return a structured error
+    console.error("=== ULTIMATE FAILSAFE TRIGGERED ===");
+    console.error("Ultimate error:", ultimateError);
+    const ultimateResponse = {
+      success: false,
+      error: `Ultimate failsafe: ${ultimateError.message || ultimateError || "Unknown error"}`,
+      timestamp: new Date().toISOString()
+    };
+    console.log("Ultimate failsafe response:", ultimateResponse);
+    return ultimateResponse;
   }
 }
 
@@ -1440,4 +1530,78 @@ function testMidnightReset() {
   const result = midnightRosterReset();
   console.log("Test result:", result);
   return result;
+}
+
+/**
+ * Simple test function to debug the api_updateStatus issue
+ */
+function api_testUpdateStatus() {
+  console.log("=== TESTING API UPDATE STATUS ===");
+  
+  try {
+    // Test with minimal parameters
+    const result = api_updateStatus("Test Student", "out", "Mr. Test", "B");
+    console.log("Test result:", result);
+    console.log("Test result type:", typeof result);
+    return result;
+  } catch (error) {
+    console.error("Test error:", error);
+    return {
+      success: false,
+      error: error.message,
+      testError: true
+    };
+  }
+}
+
+/**
+ * Ultra-simple test function that just returns a basic object
+ */
+function api_simpleTest() {
+  console.log("=== SIMPLE TEST ===");
+  const response = {
+    success: true,
+    message: "Simple test works",
+    timestamp: new Date().toISOString()
+  };
+  console.log("Returning:", response);
+  return response;
+}
+
+/**
+ * Simplified version of api_updateStatus that doesn't call fetchData
+ * This helps isolate whether the issue is in updateStatus or fetchData
+ */
+function api_updateStatusSimple(studentName, action, teacherName, gender) {
+  console.log("=== API updateStatusSimple START ===");
+  console.log("Called with:", { studentName, action, teacherName, gender });
+
+  try {
+    console.log("Calling updateStatus...");
+    updateStatus(studentName, action, teacherName, gender);
+    console.log("updateStatus completed successfully");
+
+    const response = {
+      success: true,
+      message: "Update completed successfully",
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log("Returning response:", response);
+    console.log("=== API updateStatusSimple END (SUCCESS) ===");
+    return response;
+  } catch (error) {
+    console.error("=== API updateStatusSimple ERROR ===");
+    console.error("Error:", error);
+    
+    const errorResponse = {
+      success: false,
+      error: error.message || "Unknown error occurred",
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log("Returning error response:", errorResponse);
+    console.log("=== API updateStatusSimple END (ERROR) ===");
+    return errorResponse;
+  }
 }
