@@ -39,10 +39,6 @@ node_modules/
 .history/
 /vscode/**/history
 
-### JetBrains IDEs
-.idea/
-*.iml
-
 ### Google Apps Script / clasp
 .clasp.json
 .gasconfig
@@ -84,10 +80,6 @@ credentials/
 
 ### Ignore local environment files used by the project
 local.settings.json
-
-### Ignore Kiro files
-.kiro
-INTEGRATION_SUMMARY.md
 
 ### Project specific: keep only source files
 !/*.html
