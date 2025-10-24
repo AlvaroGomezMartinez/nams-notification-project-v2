@@ -15,6 +15,9 @@
 !*.html
 !*.css
 
+# Exclude backup files
+Code_old.js
+
 # The lines above are the important part: only the manifest and script/html/css files
 # will be uploaded by `clasp push`. The rest of this file lists common dev files so
 # they are clearly excluded (mostly redundant because of the '*' rule above).
