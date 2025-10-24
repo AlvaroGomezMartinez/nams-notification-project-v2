@@ -567,8 +567,8 @@
 
           <!-- No Active Students Message -->
           <div x-show="!isLoading && students.length === 0" style="text-align: center; padding: 40px; color: #666;">
-            <i class="material-icons" style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;">search</i>
-            <h6>No Active Students</h6>
+            <i class="material-icons" style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;">event_seat</i>
+            <h6>No students are currently using the restroom</h6>
           </div>
 
           <!-- Active Students Table -->
@@ -3018,6 +3018,11 @@
             return "ALREADY WENT";
           }
 
+          // Check if student has usage limit flag (set by server-side check)
+          if (stu.usageLimitReached) {
+            return "ALREADY WENT";
+          }
+
           // If student has no hold notice and no out time, show regular request button
           if (!stu.holdNotice && !stu.outTime) {
             return "REQUEST RR";
@@ -3043,6 +3048,8 @@
 
           // Determine base button state
           if (stu.outTime && stu.backTime) {
+            baseClass = "already-went";
+          } else if (stu.usageLimitReached) {
             baseClass = "already-went";
           } else if (stu.outTime && !stu.backTime) {
             baseClass = "currently-out";
@@ -3112,6 +3119,12 @@
             console.log(
               "Student already went or is currently out, ignoring click",
             );
+            return;
+          }
+
+          // Prevent action if student has reached usage limit
+          if (stu.usageLimitReached) {
+            console.log("Student has reached usage limit, ignoring click");
             return;
           }
 
@@ -3541,43 +3554,128 @@
             return;
           }
 
-          // Add student to active list with default values
-          const newStudent = {
-            name: student.name,
-            id: student.id,
-            nameId: student.name,
-            gender: "",
-            teacher: this.detectedTeacher || "",
-            outTime: "",
-            backTime: "",
-            holdNotice: ""
-          };
+          // Show loading state while checking usage limit
+          this.isLoading = true;
+          this.loadingMessage = `Checking restroom usage for ${student.name}...`;
 
-          this.students.push(newStudent);
-          console.log(`Added ${student.name} to active management`);
+          // Check if student has already used restroom in current period
+          google.script.run
+            .withSuccessHandler((result) => {
+              this.isLoading = false;
+              this.loadingMessage = "";
 
-          // Show success feedback
+              if (!result.success) {
+                console.error('Error checking usage limit:', result.error);
+                alert(`Error checking restroom usage: ${result.error}`);
+                return;
+              }
+
+              if (!result.canUseRestroom) {
+                // Student has already used restroom - show message instead of adding
+                const period = result.currentPeriod || 'today';
+                const message = `${student.name} has already used the restroom once in the ${period}.`;
+
+                this.showAlreadyWentMessage(student.name, message, result.usageCount);
+                return;
+              }
+
+              // Student can use restroom - add to active list
+              const newStudent = {
+                name: student.name,
+                id: student.id,
+                nameId: student.name,
+                gender: "",
+                teacher: this.detectedTeacher || "",
+                outTime: "",
+                backTime: "",
+                holdNotice: ""
+              };
+
+              this.students.push(newStudent);
+              console.log(`Added ${student.name} to active management`);
+
+              // Show success feedback
+              this.showSuccessMessage(`✓ ${student.name} added to active management`);
+
+              // Scroll to the table so user can see the new student
+              setTimeout(() => {
+                const tableContainer = document.querySelector('.table-container');
+                if (tableContainer) {
+                  tableContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }, 100);
+            })
+            .withFailureHandler((error) => {
+              this.isLoading = false;
+              this.loadingMessage = "";
+              console.error('Error checking student usage limit:', error);
+              alert(`Error checking restroom usage: ${error.message || error}`);
+            })
+            .api_checkStudentUsageLimit(student.name);
+        },
+
+        /**
+         * Show "Already Went" message with usage details
+         */
+        showAlreadyWentMessage(studentName, message, usageCount) {
+          const alreadyWentMessage = document.createElement('div');
+
+          let detailText = '';
+          if (usageCount) {
+            const morning = usageCount.morning || 0;
+            const afternoon = usageCount.afternoon || 0;
+            detailText = `\nUsage today: Morning (${morning}), Afternoon (${afternoon})`;
+          }
+
+          alreadyWentMessage.innerHTML = `
+            <div style="font-weight: 600; margin-bottom: 4px;">🚫 ${studentName}</div>
+            <div style="font-size: 14px;">${message}${detailText}</div>
+          `;
+
+          alreadyWentMessage.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #ff9800;
+            color: white;
+            padding: 16px 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 10000;
+            max-width: 300px;
+            line-height: 1.4;
+          `;
+
+          document.body.appendChild(alreadyWentMessage);
+
+          setTimeout(() => {
+            alreadyWentMessage.remove();
+          }, 5000); // Show for 5 seconds since it has more info
+        },
+
+        /**
+         * Show success message
+         */
+        showSuccessMessage(message) {
           const successMessage = document.createElement('div');
-          successMessage.textContent = `✓ ${student.name} added to active management`;
+          successMessage.textContent = message;
           successMessage.style.cssText = `
-              position: fixed;
-              top: 20px;
-              right: 20px;
-              background: #4caf50;
-              color: white;
-              padding: 12px 20px;
-              border-radius: 4px;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-              z-index: 10000;
-              font-weight: 500;
-            `;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4caf50;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 10000;
+            font-weight: 500;
+          `;
           document.body.appendChild(successMessage);
 
           setTimeout(() => {
             successMessage.remove();
           }, 3000);
-
-          // Scroll to the table so user can see the new student
           setTimeout(() => {
             const table = document.querySelector('.table-container');
             if (table) {

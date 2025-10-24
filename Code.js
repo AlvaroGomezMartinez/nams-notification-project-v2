@@ -360,6 +360,20 @@ function fetchData() {
         holdNotice: "",
       };
 
+      // Check usage limit for students who are currently active
+      let usageLimitReached = false;
+      if (status.outTime || status.holdNotice) {
+        try {
+          const usageCheck = api_checkStudentUsageLimit(student.name);
+          if (usageCheck.success && !usageCheck.canUseRestroom) {
+            usageLimitReached = true;
+            console.log(`Student ${student.name} has reached usage limit: ${usageCheck.reason}`);
+          }
+        } catch (error) {
+          console.warn(`Error checking usage limit for ${student.name}:`, error.message);
+        }
+      }
+
       result.push({
         name: student.name,
         id: student.id,
@@ -369,6 +383,7 @@ function fetchData() {
         outTime: status.outTime,
         backTime: status.backTime,
         holdNotice: status.holdNotice,
+        usageLimitReached: usageLimitReached,
       });
 
       // Debug: Log first few students with any status
@@ -379,8 +394,8 @@ function fetchData() {
         console.log(`Student ${student.name} status:`, status);
       }
 
-      // Build queue lists
-      if (status.holdNotice && !status.outTime) {
+      // Build queue lists (don't add students who have reached usage limit)
+      if (status.holdNotice && !status.outTime && !usageLimitReached) {
         // They have been put on hold (waiting in line)
         if (status.gender === "G") queue.girls.push(student.name);
         else if (status.gender === "B") queue.boys.push(student.name);
@@ -468,6 +483,15 @@ function updateStatus(studentName, action, teacherName, gender) {
 
   if (action === "out") {
     try {
+      console.log("Checking usage limit before allowing out action...");
+      // Check if student has already used restroom in current period
+      const usageCheck = api_checkStudentUsageLimit(studentName);
+      if (usageCheck.success && !usageCheck.canUseRestroom) {
+        console.log(`Student ${studentName} has reached usage limit: ${usageCheck.reason}`);
+        throw new Error(`Student has already used the restroom once in the ${usageCheck.currentPeriod || 'current period'}.`);
+      }
+
+      console.log("Usage limit check passed, proceeding with out action...");
       console.log("Checking current student status...");
       // First check if this student is currently waiting in line
       const currentStatus = _getCurrentRestroomStatus();
@@ -1343,6 +1367,18 @@ function api_getActiveStudents() {
     for (const [studentName, studentStatus] of Object.entries(status)) {
       console.log(`Processing student: ${studentName}`, studentStatus);
 
+      // Check usage limit for active students
+      let usageLimitReached = false;
+      try {
+        const usageCheck = api_checkStudentUsageLimit(studentName);
+        if (usageCheck.success && !usageCheck.canUseRestroom) {
+          usageLimitReached = true;
+          console.log(`Active student ${studentName} has reached usage limit: ${usageCheck.reason}`);
+        }
+      } catch (error) {
+        console.warn(`Error checking usage limit for active student ${studentName}:`, error.message);
+      }
+
       const studentData = {
         name: studentName,
         id: studentStatus.id || "",
@@ -1352,6 +1388,7 @@ function api_getActiveStudents() {
         outTime: studentStatus.outTime || "",
         backTime: studentStatus.backTime || "",
         holdNotice: studentStatus.holdNotice || "",
+        usageLimitReached: usageLimitReached,
       };
 
       activeStudents.push(studentData);
@@ -1390,6 +1427,149 @@ function api_getActiveStudents() {
 }
 
 /**
+ * Check if a student has already used the restroom in the current period (morning/afternoon)
+ * @param {string} studentName - Name of the student to check
+ * @returns {Object} - Result with usage information
+ */
+function api_checkStudentUsageLimit(studentName) {
+  try {
+    console.log(`=== api_checkStudentUsageLimit called: ${studentName} ===`);
+
+    if (!studentName) {
+      throw new Error("Student name is required");
+    }
+
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      console.log("No Log sheet found - student can use restroom");
+      return {
+        success: true,
+        canUseRestroom: true,
+        usageCount: { morning: 0, afternoon: 0 },
+        currentPeriod: _getCurrentPeriod(),
+      };
+    }
+
+    const data = logSheet.getDataRange().getValues();
+    const today = new Date().toLocaleDateString();
+    const currentPeriod = _getCurrentPeriod();
+    
+    console.log(`Checking usage for ${studentName} on ${today}, current period: ${currentPeriod}`);
+
+    let morningUsage = 0;
+    let afternoonUsage = 0;
+
+    // Check all entries for this student today
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const entryDate = row[0] ? new Date(row[0]).toLocaleDateString() : "";
+      const entryName = row[1];
+      const outTime = row[5];
+      const backTime = row[6];
+
+      // Only count completed trips (both out and back times)
+      if (entryDate === today && entryName === studentName && outTime && backTime) {
+        const usageTime = _parseTimeToHour(outTime);
+        
+        // Morning period: before 12:00 PM (before lunch)
+        // Afternoon period: 12:00 PM and after
+        if (usageTime < 12) {
+          morningUsage++;
+        } else {
+          afternoonUsage++;
+        }
+        
+        console.log(`Found completed trip for ${studentName} at ${outTime} (${usageTime < 12 ? 'morning' : 'afternoon'})`);
+      }
+    }
+
+    const usageCount = { morning: morningUsage, afternoon: afternoonUsage };
+    console.log(`Usage count for ${studentName}:`, usageCount);
+
+    // Check if student can use restroom based on current period
+    let canUseRestroom = true;
+    let reason = "";
+
+    if (currentPeriod === "morning" && morningUsage >= 1) {
+      canUseRestroom = false;
+      reason = "Already used restroom once in the morning";
+    } else if (currentPeriod === "afternoon" && afternoonUsage >= 1) {
+      canUseRestroom = false;
+      reason = "Already used restroom once in the afternoon";
+    }
+
+    console.log(`Can use restroom: ${canUseRestroom}, reason: ${reason}`);
+
+    return {
+      success: true,
+      canUseRestroom: canUseRestroom,
+      reason: reason,
+      usageCount: usageCount,
+      currentPeriod: currentPeriod,
+    };
+  } catch (error) {
+    console.error("Error in api_checkStudentUsageLimit:", error);
+    return {
+      success: false,
+      error: error.message,
+      canUseRestroom: true, // Default to allowing usage on error
+    };
+  }
+}
+
+/**
+ * Helper function to determine current period (morning/afternoon)
+ * @returns {string} - "morning" or "afternoon"
+ */
+function _getCurrentPeriod() {
+  const now = new Date();
+  const currentHour = now.getHours();
+  
+  // Before 12:00 PM is morning, 12:00 PM and after is afternoon
+  return currentHour < 12 ? "morning" : "afternoon";
+}
+
+/**
+ * Helper function to parse time string and extract hour
+ * @param {string} timeString - Time string like "9:30 AM" or "2:15 PM"
+ * @returns {number} - Hour in 24-hour format
+ */
+function _parseTimeToHour(timeString) {
+  try {
+    if (!timeString) return 0;
+    
+    const timeStr = timeString.toString().trim();
+    const timeMatch = timeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1], 10);
+      const ampm = timeMatch[3].toUpperCase();
+      
+      if (ampm === "AM" && hours === 12) {
+        hours = 0;
+      } else if (ampm === "PM" && hours !== 12) {
+        hours += 12;
+      }
+      
+      return hours;
+    }
+    
+    // Try 24-hour format
+    const hour24Match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+    if (hour24Match) {
+      return parseInt(hour24Match[1], 10);
+    }
+    
+    return 0;
+  } catch (error) {
+    console.error("Error parsing time string:", timeString, error);
+    return 0;
+  }
+}
+
+/**
  * Add a student to the active management table
  * This creates an initial entry for the student so they appear in the management interface
  * @param {string} studentName - Name of the student to add
@@ -1413,6 +1593,19 @@ function api_addStudentToActive(studentName, studentId, teacherName) {
         success: true,
         message: "Student is already in the active list",
         alreadyActive: true,
+      };
+    }
+
+    // Check if student has already used restroom in current period
+    const usageCheck = api_checkStudentUsageLimit(studentName);
+    if (usageCheck.success && !usageCheck.canUseRestroom) {
+      console.log(`Student ${studentName} has already used restroom: ${usageCheck.reason}`);
+      return {
+        success: false,
+        error: "ALREADY_WENT",
+        message: usageCheck.reason,
+        usageCount: usageCheck.usageCount,
+        currentPeriod: usageCheck.currentPeriod,
       };
     }
 
@@ -1566,6 +1759,36 @@ function api_simpleTest() {
   };
   console.log("Returning:", response);
   return response;
+}
+
+/**
+ * Test function for usage limit checking
+ */
+function api_testUsageLimit() {
+  console.log("=== TESTING USAGE LIMIT ===");
+  
+  try {
+    // Test with a sample student name
+    const testStudentName = "Test Student";
+    const result = api_checkStudentUsageLimit(testStudentName);
+    
+    console.log("Test result:", result);
+    
+    return {
+      success: true,
+      message: "Usage limit test completed",
+      testResult: result,
+      currentPeriod: _getCurrentPeriod(),
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error("Test error:", error);
+    return {
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
 }
 
 /**
