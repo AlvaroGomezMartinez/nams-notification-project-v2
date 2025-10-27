@@ -645,6 +645,52 @@
   </div>
 
   <script>
+    // Global test functions for debugging (accessible from browser console)
+    window.testUsageLimit = function (studentName) {
+      console.log('Testing usage limit for:', studentName);
+
+      google.script.run
+        .withSuccessHandler((result) => {
+          console.log('Test usage limit result:', result);
+          alert(`Usage check result: ${JSON.stringify(result, null, 2)}`);
+        })
+        .withFailureHandler((error) => {
+          console.error('Test usage limit error:', error);
+          alert(`Error: ${error.message || error}`);
+        })
+        .api_checkStudentUsageLimit(studentName);
+    };
+
+    window.debugStudentSelection = function (studentName) {
+      console.log('Debugging student selection for:', studentName);
+
+      google.script.run
+        .withSuccessHandler((result) => {
+          console.log('Debug student selection result:', result);
+          alert(`Debug result: ${JSON.stringify(result, null, 2)}`);
+        })
+        .withFailureHandler((error) => {
+          console.error('Debug student selection error:', error);
+          alert(`Error: ${error.message || error}`);
+        })
+        .api_debugStudentSelection(studentName);
+    };
+
+    window.getTodaysLogEntries = function (studentName) {
+      console.log('Getting today\'s log entries for:', studentName || 'all students');
+
+      google.script.run
+        .withSuccessHandler((result) => {
+          console.log('Today\'s log entries result:', result);
+          alert(`Log entries: ${JSON.stringify(result, null, 2)}`);
+        })
+        .withFailureHandler((error) => {
+          console.error('Get log entries error:', error);
+          alert(`Error: ${error.message || error}`);
+        })
+        .api_getTodaysLogEntries(studentName);
+    };
+
     /**
      * SmartPollingManager for adaptive refresh based on user activity
      * Adjusts polling frequency based on user interaction patterns
@@ -1048,9 +1094,10 @@
      * Handles optimistic updates with server confirmation and rollback on errors
      */
     class OptimisticUI {
-      constructor() {
+      constructor(appContext = null) {
         this.pendingUpdates = new Map(); // Track pending optimistic updates
         this.originalStates = new Map(); // Store original states for rollback
+        this.appContext = appContext; // Reference to the main app for accessing students array
       }
 
       /**
@@ -1082,11 +1129,37 @@
         const timeString = this._formatTimeToHHMM(now);
 
         if (action === "out") {
-          optimisticState.outTime = timeString;
-          optimisticState.holdNotice = ""; // Clear hold notice when going out
-          console.log(
-            `OptimisticUI: Marking ${student.name} OUT optimistically at ${timeString}`,
+          // Check if restroom is available for this gender before setting optimistic state
+          const studentsOfSameGender = this.appContext ? this.appContext.students.filter(
+            (s) => s.gender === student.gender,
+          ) : [];
+          const anyoneOut = studentsOfSameGender.some(
+            (s) => s.outTime && !s.backTime,
           );
+
+          console.log(`OptimisticUI: Checking restroom availability for ${student.name} (${student.gender})`);
+          console.log(`OptimisticUI: Students of same gender:`, studentsOfSameGender.map(s => `${s.name} (out: ${s.outTime}, back: ${s.backTime})`));
+          console.log(`OptimisticUI: Anyone out?`, anyoneOut);
+
+          if (anyoneOut) {
+            // Restroom is occupied - student will be added to waiting list
+            let waitingCount = studentsOfSameGender.filter(
+              (s) => s.holdNotice && !s.outTime,
+            ).length;
+            const position = waitingCount + 1;
+            optimisticState.holdNotice = `Waiting in line. Position ${position}.`;
+            optimisticState.outTime = ""; // No out time yet
+            console.log(
+              `OptimisticUI: Adding ${student.name} to waiting list optimistically (position ${position})`,
+            );
+          } else {
+            // Restroom is available - student will go out immediately
+            optimisticState.outTime = timeString;
+            optimisticState.holdNotice = ""; // Clear hold notice when going out
+            console.log(
+              `OptimisticUI: Marking ${student.name} OUT optimistically at ${timeString}`,
+            );
+          }
         } else if (action === "back") {
           optimisticState.backTime = timeString;
           console.log(
@@ -1633,13 +1706,16 @@
         // Initialize LocalDataCache instance
         localCache: new LocalDataCache(),
 
-        // Initialize OptimisticUI instance
-        optimisticUI: new OptimisticUI(),
+        // Initialize OptimisticUI instance (will be set in init())
+        optimisticUI: null,
 
         // Initialize SmartPollingManager instance
         smartPolling: new SmartPollingManager(),
 
         init() {
+          // Initialize OptimisticUI with app context
+          this.optimisticUI = new OptimisticUI(this);
+
           this.loadUserInfo();
 
           // Update period every minute
@@ -2885,24 +2961,40 @@
             return "ALREADY WENT";
           }
 
-          // If student has no hold notice and no out time, show regular request button
-          if (!stu.holdNotice && !stu.outTime) {
-            return "REQUEST RR";
-          }
-
           // If student is currently out (has out time but no back time)
           if (stu.outTime && !stu.backTime) {
             return "CURRENTLY OUT";
           }
 
-          // If student has requested restroom access
-          if (this.isReadyToMarkOut(stu)) {
-            // Restroom is available for this gender
-            return "RR AVAILABLE";
-          } else {
-            // Restroom is occupied by someone of the same gender
-            return "WAITING";
+          // If student has a hold notice but no out time, they are waiting
+          if (stu.holdNotice && !stu.outTime) {
+            // Check if they're ready to be promoted (restroom available)
+            if (this.isReadyToMarkOut(stu)) {
+              return "RR AVAILABLE";
+            } else {
+              return "WAITING";
+            }
           }
+
+          // If student has no hold notice and no out time, check if restroom is available
+          if (!stu.holdNotice && !stu.outTime) {
+            // Check if anyone of the same gender is currently out
+            const studentsOfSameGender = this.students.filter(
+              (s) => s.gender === stu.gender,
+            );
+            const anyoneOut = studentsOfSameGender.some(
+              (s) => s.outTime && !s.backTime,
+            );
+
+            if (anyoneOut) {
+              return "ADD TO LIST";
+            } else {
+              return "REQUEST RR";
+            }
+          }
+
+          // Fallback case
+          return "REQUEST RR";
         },
 
         getButtonClass(stu) {
@@ -2934,6 +3026,12 @@
 
           if (buttonText === "RR AVAILABLE") {
             baseTitle = "SEND NOW";
+          } else if (buttonText === "ADD TO LIST") {
+            baseTitle = "Click to add student to waiting list";
+          } else if (buttonText === "REQUEST RR") {
+            baseTitle = "Click to request restroom access";
+          } else if (buttonText === "WAITING") {
+            baseTitle = "Student is waiting in line";
           } else {
             baseTitle = `Student status - outTime: ${stu.outTime} | holdNotice: ${stu.holdNotice} | ready to promote: ${this.isReadyToMarkOut(stu)}`;
           }
@@ -3416,6 +3514,15 @@
             return;
           }
 
+          // Debug: Check if Google Apps Script is available
+          if (!google || !google.script || !google.script.run) {
+            console.error('Google Apps Script not available!');
+            alert('Error: Google Apps Script not available. Please refresh the page.');
+            return;
+          }
+
+          console.log('Starting usage limit check for:', student.name);
+
           // Show loading state while checking usage limit
           this.isLoading = true;
           this.loadingMessage = `Checking restroom usage for ${student.name}...`;
@@ -3423,25 +3530,42 @@
           // Check if student has already used restroom in current period
           google.script.run
             .withSuccessHandler((result) => {
+              console.log('Usage limit check result:', result);
               this.isLoading = false;
               this.loadingMessage = "";
 
-              if (!result.success) {
-                console.error('Error checking usage limit:', result.error);
-                alert(`Error checking restroom usage: ${result.error}`);
-                return;
+              if (!result || !result.success) {
+                console.error('Error checking usage limit:', result ? result.error : 'No result returned');
+                // Log error but don't show popup - the system should still work
+                console.warn('Usage limit check failed, but continuing...');
+                // Allow the student to be added if there's an error (failsafe behavior)
               }
+
+              // Debug: Show detailed usage information
+              const debugInfo = `
+Usage Check for ${student.name}:
+• Current Period: ${result.currentPeriod}
+• Can Use Restroom: ${result.canUseRestroom}
+• Morning Usage: ${result.usageCount?.morning || 0}
+• Afternoon Usage: ${result.usageCount?.afternoon || 0}
+• Currently Out: ${result.currentlyOut}
+• Reason: ${result.reason || 'None'}
+              `.trim();
+              console.log(debugInfo);
 
               if (!result.canUseRestroom) {
                 // Student has already used restroom - show message instead of adding
                 const period = result.currentPeriod || 'today';
                 const message = `${student.name} has already used the restroom once in the ${period}.`;
 
+                console.log('Student cannot use restroom:', result.reason);
+                // Only show the nice amber notification, no popup alert
                 this.showAlreadyWentMessage(student.name, message, result.usageCount);
                 return;
               }
 
               // Student can use restroom - add to active list
+              console.log('Student can use restroom, adding to active list');
               const newStudent = {
                 name: student.name,
                 id: student.id,
@@ -3456,9 +3580,6 @@
               this.students.push(newStudent);
               console.log(`Added ${student.name} to active management`);
 
-              // Show success feedback
-              this.showSuccessMessage(`✓ ${student.name} added to active management`);
-
               // Scroll to the table so user can see the new student
               setTimeout(() => {
                 const tableContainer = document.querySelector('.table-container');
@@ -3468,12 +3589,64 @@
               }, 100);
             })
             .withFailureHandler((error) => {
+              console.error('Google Apps Script call failed:', error);
               this.isLoading = false;
               this.loadingMessage = "";
-              console.error('Error checking student usage limit:', error);
-              alert(`Error checking restroom usage: ${error.message || error}`);
+              // Log error but don't show popup - continue with adding student as failsafe
+              console.warn('Usage limit check failed, adding student anyway as failsafe');
+
+              // Add student anyway if the check fails (failsafe behavior)
+              const newStudent = {
+                name: student.name,
+                id: student.id,
+                nameId: student.name,
+                gender: "",
+                teacher: this.detectedTeacher || "",
+                outTime: "",
+                backTime: "",
+                holdNotice: ""
+              };
+
+              this.students.push(newStudent);
+              console.log(`Added ${student.name} to active management (failsafe mode)`);
             })
             .api_checkStudentUsageLimit(student.name);
+        },
+
+        /**
+         * Test function to manually check usage limit (for debugging)
+         */
+        testUsageLimit(studentName) {
+          console.log('Testing usage limit for:', studentName);
+
+          google.script.run
+            .withSuccessHandler((result) => {
+              console.log('Test usage limit result:', result);
+              alert(`Usage check result: ${JSON.stringify(result, null, 2)}`);
+            })
+            .withFailureHandler((error) => {
+              console.error('Test usage limit error:', error);
+              alert(`Error: ${error.message || error}`);
+            })
+            .api_checkStudentUsageLimit(studentName);
+        },
+
+        /**
+         * Debug function to check student selection process
+         */
+        debugStudentSelection(studentName) {
+          console.log('Debugging student selection for:', studentName);
+
+          google.script.run
+            .withSuccessHandler((result) => {
+              console.log('Debug student selection result:', result);
+              alert(`Debug result: ${JSON.stringify(result, null, 2)}`);
+            })
+            .withFailureHandler((error) => {
+              console.error('Debug student selection error:', error);
+              alert(`Error: ${error.message || error}`);
+            })
+            .api_debugStudentSelection(studentName);
         },
 
         /**

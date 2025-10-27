@@ -1432,90 +1432,128 @@ function api_getActiveStudents() {
  * @returns {Object} - Result with usage information
  */
 function api_checkStudentUsageLimit(studentName) {
-  try {
-    console.log(`=== api_checkStudentUsageLimit called: ${studentName} ===`);
+  const result = {
+    success: true,
+    canUseRestroom: true,
+    reason: "",
+    usageCount: { morning: 0, afternoon: 0 },
+    currentPeriod: "afternoon",
+    currentlyOut: false,
+  };
 
+  try {
     if (!studentName) {
-      throw new Error("Student name is required");
+      result.success = false;
+      result.error = "Student name is required";
+      result.canUseRestroom = false;
+      return result;
     }
 
+    // Get current period
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentPeriod = currentHour < 12 ? "morning" : "afternoon";
+    result.currentPeriod = currentPeriod;
+
+    // Get spreadsheet and log sheet
     const ss = getSpreadsheet();
     const logSheet = ss.getSheetByName("Log");
     
     if (!logSheet) {
-      console.log("No Log sheet found - student can use restroom");
-      return {
-        success: true,
-        canUseRestroom: true,
-        usageCount: { morning: 0, afternoon: 0 },
-        currentPeriod: _getCurrentPeriod(),
-      };
+      return result; // No log sheet means student can use restroom
     }
 
     const data = logSheet.getDataRange().getValues();
-    const today = new Date().toLocaleDateString();
-    const currentPeriod = _getCurrentPeriod();
-    
-    console.log(`Checking usage for ${studentName} on ${today}, current period: ${currentPeriod}`);
+    if (data.length <= 1) {
+      return result; // Empty log sheet means student can use restroom
+    }
 
+    // Get today's date for comparison
+    const today = new Date();
+    
     let morningUsage = 0;
     let afternoonUsage = 0;
-
-    // Check all entries for this student today
+    let currentlyOut = false;
+    
+    // Check each row in the log for this student's entries today
     for (let r = 1; r < data.length; r++) {
       const row = data[r];
-      const entryDate = row[0] ? new Date(row[0]).toLocaleDateString() : "";
-      const entryName = row[1];
+      
+      // Skip empty rows or entries for other students
+      if (!row[0] || !row[1] || row[1] !== studentName) continue;
+      
+      const logDate = row[0];
       const outTime = row[5];
       const backTime = row[6];
-
-      // Only count completed trips (both out and back times)
-      if (entryDate === today && entryName === studentName && outTime && backTime) {
-        const usageTime = _parseTimeToHour(outTime);
-        
-        // Morning period: before 12:00 PM (before lunch)
-        // Afternoon period: 12:00 PM and after
-        if (usageTime < 12) {
-          morningUsage++;
-        } else {
-          afternoonUsage++;
+      const holdNotice = row[7];
+      
+      // Check if this entry is from today
+      let isToday = false;
+      if (logDate) {
+        try {
+          const entryDate = new Date(logDate);
+          if (!isNaN(entryDate.getTime())) {
+            isToday = entryDate.getFullYear() === today.getFullYear() &&
+                     entryDate.getMonth() === today.getMonth() &&
+                     entryDate.getDate() === today.getDate();
+          }
+        } catch (e) {
+          // Skip entries with invalid dates
+          continue;
+        }
+      }
+      
+      if (isToday) {
+        // Check if student is currently out or waiting
+        if ((outTime && !backTime) || holdNotice) {
+          currentlyOut = true;
         }
         
-        console.log(`Found completed trip for ${studentName} at ${outTime} (${usageTime < 12 ? 'morning' : 'afternoon'})`);
+        // Count completed trips (must have both out and back times)
+        if (outTime && backTime) {
+          let isAfternoonTrip = false;
+          
+          if (outTime instanceof Date) {
+            // Time is a Date object - use hour to determine period
+            const hour = outTime.getHours();
+            isAfternoonTrip = hour >= 12;
+          } else {
+            // Time is a string - check for AM/PM
+            const outTimeStr = outTime.toString().toLowerCase();
+            isAfternoonTrip = outTimeStr.includes('pm');
+          }
+          
+          if (isAfternoonTrip) {
+            afternoonUsage++;
+          } else {
+            morningUsage++;
+          }
+        }
       }
     }
-
-    const usageCount = { morning: morningUsage, afternoon: afternoonUsage };
-    console.log(`Usage count for ${studentName}:`, usageCount);
-
-    // Check if student can use restroom based on current period
-    let canUseRestroom = true;
-    let reason = "";
-
-    if (currentPeriod === "morning" && morningUsage >= 1) {
-      canUseRestroom = false;
-      reason = "Already used restroom once in the morning";
+    
+    result.usageCount = { morning: morningUsage, afternoon: afternoonUsage };
+    result.currentlyOut = currentlyOut;
+    
+    // Determine if student can use restroom
+    if (currentlyOut) {
+      result.canUseRestroom = false;
+      result.reason = "Student is already in the restroom management system";
     } else if (currentPeriod === "afternoon" && afternoonUsage >= 1) {
-      canUseRestroom = false;
-      reason = "Already used restroom once in the afternoon";
+      result.canUseRestroom = false;
+      result.reason = "Already used restroom once in the afternoon";
+    } else if (currentPeriod === "morning" && morningUsage >= 1) {
+      result.canUseRestroom = false;
+      result.reason = "Already used restroom once in the morning";
     }
-
-    console.log(`Can use restroom: ${canUseRestroom}, reason: ${reason}`);
-
-    return {
-      success: true,
-      canUseRestroom: canUseRestroom,
-      reason: reason,
-      usageCount: usageCount,
-      currentPeriod: currentPeriod,
-    };
+    
+    return result;
+    
   } catch (error) {
-    console.error("Error in api_checkStudentUsageLimit:", error);
-    return {
-      success: false,
-      error: error.message,
-      canUseRestroom: true, // Default to allowing usage on error
-    };
+    console.error(`Error checking usage limit for ${studentName}:`, error);
+    result.success = false;
+    result.error = error.message;
+    return result;
   }
 }
 
@@ -1769,7 +1807,7 @@ function api_testUsageLimit() {
   
   try {
     // Test with a sample student name
-    const testStudentName = "Test Student";
+    const testStudentName = "Allen, Ibrahim";
     const result = api_checkStudentUsageLimit(testStudentName);
     
     console.log("Test result:", result);
@@ -1783,6 +1821,140 @@ function api_testUsageLimit() {
     };
   } catch (error) {
     console.error("Test error:", error);
+    return {
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
+
+/**
+ * Debug function to check what's happening when a student is selected
+ */
+function api_debugStudentSelection(studentName) {
+  console.log(`=== DEBUG STUDENT SELECTION: ${studentName} ===`);
+  
+  try {
+    // First check if the function exists and works
+    const usageCheck = api_checkStudentUsageLimit(studentName);
+    console.log("Usage check result:", usageCheck);
+    
+    // Also check current restroom status
+    const currentStatus = _getCurrentRestroomStatusFallback();
+    const studentStatus = currentStatus[studentName];
+    console.log("Current status for student:", studentStatus);
+    
+    // Check log entries for today
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    const today = new Date().toLocaleDateString();
+    
+    let todayEntries = [];
+    if (logSheet) {
+      const data = logSheet.getDataRange().getValues();
+      
+      for (let r = 1; r < data.length; r++) {
+        const row = data[r];
+        const entryDate = row[0] ? new Date(row[0]).toLocaleDateString() : "";
+        const entryName = row[1];
+        
+        if (entryDate === today && entryName === studentName) {
+          todayEntries.push({
+            rowNumber: r + 1,
+            date: entryDate,
+            name: entryName,
+            id: row[2],
+            gender: row[3],
+            teacher: row[4],
+            outTime: row[5],
+            backTime: row[6],
+            holdNotice: row[7]
+          });
+        }
+      }
+      
+      console.log(`Found ${todayEntries.length} log entries for ${studentName} today:`, todayEntries);
+    }
+    
+    return {
+      success: true,
+      studentName: studentName,
+      usageCheck: usageCheck,
+      currentStatus: studentStatus,
+      todayEntries: todayEntries,
+      currentPeriod: _getCurrentPeriod(),
+      currentTime: new Date().toLocaleString(),
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error("Debug error:", error);
+    return {
+      success: false,
+      error: error.message,
+      studentName: studentName,
+      timestamp: new Date().toISOString()
+    };
+  }
+}
+
+/**
+ * Simple function to check today's log entries for any student
+ */
+function api_getTodaysLogEntries(studentName = null) {
+  console.log(`=== GET TODAY'S LOG ENTRIES ${studentName ? 'for ' + studentName : ''} ===`);
+  
+  try {
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    const today = new Date().toLocaleDateString();
+    
+    if (!logSheet) {
+      return {
+        success: true,
+        message: "No Log sheet found",
+        entries: [],
+        today: today
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    const todayEntries = [];
+    
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const entryDate = row[0] ? new Date(row[0]).toLocaleDateString() : "";
+      const entryName = row[1];
+      
+      if (entryDate === today) {
+        if (!studentName || entryName === studentName) {
+          todayEntries.push({
+            rowNumber: r + 1,
+            date: entryDate,
+            name: entryName,
+            id: row[2],
+            gender: row[3],
+            teacher: row[4],
+            outTime: row[5],
+            backTime: row[6],
+            holdNotice: row[7]
+          });
+        }
+      }
+    }
+    
+    console.log(`Found ${todayEntries.length} entries for today${studentName ? ' for ' + studentName : ''}`);
+    
+    return {
+      success: true,
+      entries: todayEntries,
+      totalEntries: todayEntries.length,
+      today: today,
+      studentName: studentName,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error("Error getting today's log entries:", error);
     return {
       success: false,
       error: error.message,

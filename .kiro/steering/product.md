@@ -5,6 +5,7 @@
 A Google Apps Script web application for managing student restroom sign-outs at Northside Alternative Middle School (NAMS). The system tracks student bathroom usage, manages waiting queues, and provides real-time status updates for teachers.
 
 **Important Requirements:**
+
 - **Bound Script**: This Google Apps Script is bound to a specific Google Spreadsheet that contains the student data and logs
 - **Authentication**: Users must be logged into the Northside intranet to access the application
 - **Access Control**: Only authorized school personnel with proper domain access can use the system
