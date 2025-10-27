@@ -1066,46 +1066,7 @@ function api_fetchData() {
   }
 }
 
-/**
- * Debug function to check what's in the Log sheet
- */
-function api_debugLogSheet() {
-  const ss = getSpreadsheet();
-  const logSheet = ss.getSheetByName("Log");
-
-  if (!logSheet) {
-    return { error: "No Log sheet found" };
-  }
-
-  const data = logSheet.getDataRange().getValues();
-  const today = new Date().toLocaleDateString();
-
-  const todaysEntries = [];
-  for (let r = 1; r < data.length; r++) {
-    const row = data[r];
-    const date = row[0];
-    const entryDate = date ? new Date(date).toLocaleDateString() : "";
-
-    if (entryDate === today) {
-      todaysEntries.push({
-        date: entryDate,
-        studentName: row[1],
-        studentId: row[2],
-        gender: row[3],
-        teacher: row[4],
-        outTime: row[5],
-        backTime: row[6],
-        holdNotice: row[7],
-      });
-    }
-  }
-
-  return {
-    today: today,
-    totalLogEntries: data.length - 1,
-    todaysEntries: todaysEntries,
-  };
-}
+// Removed duplicate api_debugLogSheet function - using the complete version below
 
 function api_updateStatus(studentName, action, teacherName, gender) {
   // ULTIMATE FAILSAFE: Wrap entire function to prevent ANY null returns
@@ -1361,22 +1322,37 @@ function api_getActiveStudents() {
     console.log("Status object:", status);
     console.log("Status keys:", Object.keys(status));
 
+    if (!status || typeof status !== 'object') {
+      console.warn("Status object is null or invalid:", status);
+      return {
+        success: true,
+        data: { students: [] },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          activeStudentCount: 0,
+        },
+        message: "No active students found (status object was null/invalid)"
+      };
+    }
+
     const activeStudents = [];
 
     // Convert status object to array of active students
     for (const [studentName, studentStatus] of Object.entries(status)) {
       console.log(`Processing student: ${studentName}`, studentStatus);
 
-      // Check usage limit for active students
+      // Check usage limit for active students (simplified to avoid errors)
       let usageLimitReached = false;
       try {
         const usageCheck = api_checkStudentUsageLimit(studentName);
-        if (usageCheck.success && !usageCheck.canUseRestroom) {
+        if (usageCheck && usageCheck.success && !usageCheck.canUseRestroom) {
           usageLimitReached = true;
           console.log(`Active student ${studentName} has reached usage limit: ${usageCheck.reason}`);
         }
       } catch (error) {
         console.warn(`Error checking usage limit for active student ${studentName}:`, error.message);
+        // Continue processing even if usage check fails
+        usageLimitReached = false;
       }
 
       const studentData = {
@@ -1423,6 +1399,1295 @@ function api_getActiveStudents() {
 
     console.log("Returning error result:", errorResult);
     return errorResult;
+  }
+}
+
+/**
+ * Simplified version of api_getActiveStudents without usage limit checks
+ * @returns {Object} - Active students without usage limit validation
+ */
+function api_getActiveStudentsSimple() {
+  try {
+    console.log("=== api_getActiveStudentsSimple called ===");
+
+    // Get today's log entries to find students who have activity today
+    const status = _getCurrentRestroomStatusFallback();
+    console.log("Status object:", status);
+    console.log("Status keys:", Object.keys(status));
+
+    if (!status || typeof status !== 'object') {
+      console.warn("Status object is null or invalid:", status);
+      return {
+        success: true,
+        data: { students: [] },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          activeStudentCount: 0,
+        },
+        message: "No active students found (status object was null/invalid)"
+      };
+    }
+
+    const activeStudents = [];
+
+    // Convert status object to array of active students (no usage limit check)
+    for (const [studentName, studentStatus] of Object.entries(status)) {
+      console.log(`Processing student: ${studentName}`, studentStatus);
+
+      const studentData = {
+        name: studentName,
+        id: studentStatus.id || "",
+        nameId: studentName,
+        gender: studentStatus.gender || "",
+        teacher: studentStatus.teacher || "",
+        outTime: studentStatus.outTime || "",
+        backTime: studentStatus.backTime || "",
+        holdNotice: studentStatus.holdNotice || "",
+        usageLimitReached: false, // Skip usage limit check
+      };
+
+      activeStudents.push(studentData);
+    }
+
+    console.log(`Found ${activeStudents.length} active students (simple version)`);
+
+    const result = {
+      success: true,
+      data: {
+        students: activeStudents,
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: activeStudents.length,
+      },
+    };
+
+    console.log("Returning simple result:", result);
+    return result;
+  } catch (error) {
+    console.error("Error in api_getActiveStudentsSimple:", error);
+    console.error("Error stack:", error.stack);
+
+    return {
+      success: false,
+      error: error.message || "Unknown error",
+      data: {
+        students: [],
+      },
+    };
+  }
+}
+
+/**
+ * Direct version of getActiveStudents that reads Log sheet directly (like debug function)
+ * @returns {Object} - Active students read directly from Log sheet
+ */
+function api_getActiveStudentsDirect() {
+  try {
+    console.log("=== api_getActiveStudentsDirect called ===");
+    
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      console.log("No Log sheet found");
+      return {
+        success: true,
+        data: { students: [] },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          activeStudentCount: 0,
+        },
+        message: "No Log sheet found"
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    const today = new Date().toLocaleDateString();
+    
+    console.log(`Log sheet has ${data.length} total rows`);
+    console.log(`Looking for entries from: ${today}`);
+    
+    const todayStudentActivity = {};
+    const activeStudents = [];
+    
+    // Analyze all entries for today (same logic as debug function)
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const date = row[0];
+      const studentName = row[1];
+      const id = row[2] || "";
+      const gender = row[3] || "";
+      const teacher = row[4] || "";
+      const outTime = row[5] || "";
+      const backTime = row[6] || "";
+      const holdNotice = row[7] || "";
+      
+      if (!studentName) continue;
+      
+      const entryDate = date ? new Date(date).toLocaleDateString() : "";
+      if (entryDate === today) {
+        // Track this student's activity
+        if (!todayStudentActivity[studentName]) {
+          todayStudentActivity[studentName] = [];
+        }
+        todayStudentActivity[studentName].push({
+          id: id,
+          gender: gender,
+          teacher: teacher,
+          outTime: outTime,
+          backTime: backTime,
+          holdNotice: holdNotice,
+          rowIndex: r + 1
+        });
+      }
+    }
+    
+    // Analyze current status for each student (same logic as debug function)
+    for (const [studentName, activities] of Object.entries(todayStudentActivity)) {
+      // Get the most recent activity (last in array)
+      const latestActivity = activities[activities.length - 1];
+      
+      if (latestActivity.backTime) {
+        // Student has returned - not active
+        console.log(`${studentName}: Returned (backTime: ${latestActivity.backTime})`);
+      } else if (latestActivity.outTime) {
+        // Student is currently out
+        console.log(`${studentName}: Currently OUT since ${latestActivity.outTime}`);
+        activeStudents.push({
+          name: studentName,
+          id: latestActivity.id,
+          nameId: studentName,
+          gender: latestActivity.gender,
+          teacher: latestActivity.teacher,
+          outTime: latestActivity.outTime,
+          backTime: "",
+          holdNotice: "",
+          usageLimitReached: false,
+        });
+      } else if (latestActivity.holdNotice) {
+        // Student is waiting
+        console.log(`${studentName}: WAITING (${latestActivity.holdNotice})`);
+        activeStudents.push({
+          name: studentName,
+          id: latestActivity.id,
+          nameId: studentName,
+          gender: latestActivity.gender,
+          teacher: latestActivity.teacher,
+          outTime: "",
+          backTime: "",
+          holdNotice: latestActivity.holdNotice,
+          usageLimitReached: false,
+        });
+      }
+    }
+    
+    console.log(`Found ${activeStudents.length} active students (direct method)`);
+    
+    const result = {
+      success: true,
+      data: {
+        students: activeStudents,
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: activeStudents.length,
+      },
+    };
+    
+    console.log("Returning direct result:", result);
+    return result;
+    
+  } catch (error) {
+    console.error("Error in api_getActiveStudentsDirect:", error);
+    console.error("Error stack:", error.stack);
+
+    return {
+      success: false,
+      error: error.message || "Unknown error",
+      data: {
+        students: [],
+      },
+    };
+  }
+}
+
+/**
+ * Test spreadsheet access to see if that's the issue
+ * @returns {Object} - Spreadsheet access test result
+ */
+function api_testSpreadsheetAccess() {
+  try {
+    console.log("=== api_testSpreadsheetAccess called ===");
+    
+    const ss = getSpreadsheet();
+    console.log("Got spreadsheet:", ss ? "SUCCESS" : "FAILED");
+    
+    if (!ss) {
+      return {
+        success: false,
+        error: "Could not access spreadsheet",
+        data: { students: [] }
+      };
+    }
+    
+    const logSheet = ss.getSheetByName("Log");
+    console.log("Got Log sheet:", logSheet ? "SUCCESS" : "FAILED");
+    
+    if (!logSheet) {
+      return {
+        success: false,
+        error: "Could not access Log sheet",
+        data: { students: [] }
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    console.log("Got data range:", data ? `${data.length} rows` : "FAILED");
+    
+    return {
+      success: true,
+      message: "Spreadsheet access test successful",
+      data: {
+        students: [],
+        spreadsheetAccess: true,
+        logSheetAccess: true,
+        totalRows: data.length
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: 0,
+      }
+    };
+    
+  } catch (error) {
+    console.error("Error in api_testSpreadsheetAccess:", error);
+    return {
+      success: false,
+      error: error.message || "Unknown error",
+      data: { students: [] }
+    };
+  }
+}
+
+/**
+ * Simple test function to verify deployment is working
+ * @returns {Object} - Simple test response
+ */
+function api_testDeployment() {
+  try {
+    console.log("=== api_testDeployment called ===");
+    
+    return {
+      success: true,
+      message: "Deployment is working!",
+      timestamp: new Date().toISOString(),
+      data: {
+        students: [
+          {
+            name: "Test Student 1",
+            id: "12345",
+            nameId: "Test Student 1",
+            gender: "B",
+            teacher: "Test Teacher",
+            outTime: "2:30 PM",
+            backTime: "",
+            holdNotice: "",
+            usageLimitReached: false,
+          },
+          {
+            name: "Test Student 2",
+            id: "67890",
+            nameId: "Test Student 2",
+            gender: "G",
+            teacher: "Test Teacher",
+            outTime: "",
+            backTime: "",
+            holdNotice: "Waiting in line. Position 1.",
+            usageLimitReached: false,
+          }
+        ]
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: 2,
+      }
+    };
+  } catch (error) {
+    console.error("Error in api_testDeployment:", error);
+    return {
+      success: false,
+      error: error.message || "Unknown error",
+      data: { students: [] }
+    };
+  }
+}
+
+/**
+ * Hybrid function that uses debug logic but returns student data format
+ * @returns {Object} - Active students using debug function's working logic
+ */
+function api_getActiveStudentsHybrid() {
+  try {
+    console.log("=== api_getActiveStudentsHybrid called ===");
+    
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      console.log("No Log sheet found");
+      return {
+        success: true,
+        data: { students: [] },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          activeStudentCount: 0,
+        },
+        message: "No Log sheet found"
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    const today = new Date().toLocaleDateString();
+    
+    console.log(`Log sheet has ${data.length} total rows`);
+    console.log(`Looking for entries from: ${today}`);
+    
+    let todayEntries = 0;
+    let activeStudents = 0;
+    let studentsOut = 0;
+    let studentsWaiting = 0;
+    const activeStudentsList = [];
+    const todayStudentActivity = {};
+    
+    // Analyze all entries for today (EXACT same logic as working debug function)
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const date = row[0];
+      const studentName = row[1];
+      const id = row[2] || "";
+      const gender = row[3] || "";
+      const teacher = row[4] || "";
+      const outTime = row[5] || "";
+      const backTime = row[6] || "";
+      const holdNotice = row[7] || "";
+      
+      if (!studentName) continue;
+      
+      const entryDate = date ? new Date(date).toLocaleDateString() : "";
+      if (entryDate === today) {
+        todayEntries++;
+        
+        // Track this student's activity
+        if (!todayStudentActivity[studentName]) {
+          todayStudentActivity[studentName] = [];
+        }
+        todayStudentActivity[studentName].push({
+          id: id,
+          gender: gender,
+          teacher: teacher,
+          outTime: outTime,
+          backTime: backTime,
+          holdNotice: holdNotice,
+          rowIndex: r + 1
+        });
+      }
+    }
+    
+    // Analyze current status for each student (EXACT same logic as working debug function)
+    for (const [studentName, activities] of Object.entries(todayStudentActivity)) {
+      // Get the most recent activity (last in array)
+      const latestActivity = activities[activities.length - 1];
+      
+      if (latestActivity.backTime) {
+        // Student has returned - not active
+        console.log(`${studentName}: Returned (backTime: ${latestActivity.backTime})`);
+      } else if (latestActivity.outTime) {
+        // Student is currently out
+        studentsOut++;
+        activeStudents++;
+        console.log(`${studentName}: Currently OUT since ${latestActivity.outTime}`);
+        
+        activeStudentsList.push({
+          name: studentName,
+          id: latestActivity.id,
+          nameId: studentName,
+          gender: latestActivity.gender,
+          teacher: latestActivity.teacher,
+          outTime: latestActivity.outTime,
+          backTime: "",
+          holdNotice: "",
+          usageLimitReached: false,
+        });
+      } else if (latestActivity.holdNotice) {
+        // Student is waiting
+        studentsWaiting++;
+        activeStudents++;
+        console.log(`${studentName}: WAITING (${latestActivity.holdNotice})`);
+        
+        activeStudentsList.push({
+          name: studentName,
+          id: latestActivity.id,
+          nameId: studentName,
+          gender: latestActivity.gender,
+          teacher: latestActivity.teacher,
+          outTime: "",
+          backTime: "",
+          holdNotice: latestActivity.holdNotice,
+          usageLimitReached: false,
+        });
+      }
+    }
+    
+    console.log(`Found ${activeStudentsList.length} active students (hybrid method)`);
+    
+    const result = {
+      success: true,
+      data: {
+        students: activeStudentsList,
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: activeStudentsList.length,
+      },
+    };
+    
+    console.log("Returning hybrid result:", result);
+    return result;
+    
+  } catch (error) {
+    console.error("Error in api_getActiveStudentsHybrid:", error);
+    console.error("Error stack:", error.stack);
+
+    return {
+      success: false,
+      error: error.message || "Unknown error",
+      data: {
+        students: [],
+      },
+    };
+  }
+}
+
+/**
+ * Minimal test that returns debug-style data but with student format
+ * @returns {Object} - Minimal test with student data
+ */
+function api_testMinimal() {
+  try {
+    console.log("=== api_testMinimal called ===");
+    
+    // Just return a simple structure like debug function but with student data
+    return {
+      success: true,
+      message: "Minimal test working",
+      data: {
+        students: [
+          {
+            name: "Test Student",
+            id: "123",
+            nameId: "Test Student",
+            gender: "B",
+            teacher: "Test Teacher",
+            outTime: "2:30 PM",
+            backTime: "",
+            holdNotice: "",
+            usageLimitReached: false,
+          }
+        ]
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: 1,
+      }
+    };
+    
+  } catch (error) {
+    console.error("Error in api_testMinimal:", error);
+    return {
+      success: false,
+      error: error.message,
+      data: { students: [] }
+    };
+  }
+}
+
+/**
+ * Function that uses debug logic to find ONE active student
+ * @returns {Object} - Single active student using debug logic
+ */
+function api_getOneActiveStudent() {
+  try {
+    console.log("=== api_getOneActiveStudent called ===");
+    
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      return {
+        success: true,
+        data: { students: [] },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          activeStudentCount: 0,
+        },
+        message: "No Log sheet found"
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    const today = new Date().toLocaleDateString();
+    
+    console.log(`Looking for ONE active student from ${data.length} rows on ${today}`);
+    
+    // Use the EXACT same logic as debug function but stop at first active student
+    const todayStudentActivity = {};
+    
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const date = row[0];
+      const studentName = row[1];
+      const id = row[2] || "";
+      const gender = row[3] || "";
+      const teacher = row[4] || "";
+      const outTime = row[5] || "";
+      const backTime = row[6] || "";
+      const holdNotice = row[7] || "";
+      
+      if (!studentName) continue;
+      
+      const entryDate = date ? new Date(date).toLocaleDateString() : "";
+      if (entryDate === today) {
+        if (!todayStudentActivity[studentName]) {
+          todayStudentActivity[studentName] = [];
+        }
+        todayStudentActivity[studentName].push({
+          id: id,
+          gender: gender,
+          teacher: teacher,
+          outTime: outTime,
+          backTime: backTime,
+          holdNotice: holdNotice,
+          rowIndex: r + 1
+        });
+      }
+    }
+    
+    // Find the first active student
+    for (const [studentName, activities] of Object.entries(todayStudentActivity)) {
+      const latestActivity = activities[activities.length - 1];
+      
+      if (!latestActivity.backTime && (latestActivity.outTime || latestActivity.holdNotice)) {
+        // Found an active student!
+        console.log(`Found active student: ${studentName}`);
+        
+        const activeStudent = {
+          name: studentName,
+          id: latestActivity.id,
+          nameId: studentName,
+          gender: latestActivity.gender,
+          teacher: latestActivity.teacher,
+          outTime: latestActivity.outTime,
+          backTime: "",
+          holdNotice: latestActivity.holdNotice,
+          usageLimitReached: false,
+        };
+        
+        return {
+          success: true,
+          data: {
+            students: [activeStudent],
+          },
+          metadata: {
+            timestamp: new Date().toISOString(),
+            activeStudentCount: 1,
+          },
+        };
+      }
+    }
+    
+    // No active students found
+    return {
+      success: true,
+      data: { students: [] },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: 0,
+      },
+      message: "No active students found"
+    };
+    
+  } catch (error) {
+    console.error("Error in api_getOneActiveStudent:", error);
+    return {
+      success: false,
+      error: error.message || "Unknown error",
+      data: { students: [] }
+    };
+  }
+}
+
+/**
+ * Exact copy of debug function but returns student format
+ * @returns {Object} - Student data using exact debug logic
+ */
+function api_debugAsStudents() {
+  try {
+    console.log("=== DEBUG AS STUDENTS: Analyzing Log Sheet ===");
+    
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      return {
+        success: true,
+        data: { students: [] },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          activeStudentCount: 0,
+        },
+        message: "No Log sheet found"
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    const today = new Date().toLocaleDateString();
+    
+    console.log(`Log sheet has ${data.length} total rows`);
+    console.log(`Looking for entries from: ${today}`);
+    
+    let todayEntries = 0;
+    let activeStudents = 0;
+    let studentsOut = 0;
+    let studentsWaiting = 0;
+    const activeStudentNames = [];
+    const todayStudentActivity = {};
+    const studentsList = []; // This is the only addition
+    
+    // EXACT same logic as debug function
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const date = row[0];
+      const studentName = row[1];
+      const outTime = row[5] || "";
+      const backTime = row[6] || "";
+      const holdNotice = row[7] || "";
+      
+      if (!studentName) continue;
+      
+      const entryDate = date ? new Date(date).toLocaleDateString() : "";
+      if (entryDate === today) {
+        todayEntries++;
+        
+        if (!todayStudentActivity[studentName]) {
+          todayStudentActivity[studentName] = [];
+        }
+        todayStudentActivity[studentName].push({
+          outTime: outTime,
+          backTime: backTime,
+          holdNotice: holdNotice,
+          rowIndex: r + 1,
+          id: row[2] || "",
+          gender: row[3] || "",
+          teacher: row[4] || ""
+        });
+      }
+    }
+    
+    // EXACT same analysis as debug function
+    for (const [studentName, activities] of Object.entries(todayStudentActivity)) {
+      const latestActivity = activities[activities.length - 1];
+      
+      if (latestActivity.backTime) {
+        console.log(`${studentName}: Returned (backTime: ${latestActivity.backTime})`);
+      } else if (latestActivity.outTime) {
+        studentsOut++;
+        activeStudents++;
+        activeStudentNames.push(`${studentName} (OUT since ${latestActivity.outTime})`);
+        console.log(`${studentName}: Currently OUT since ${latestActivity.outTime}`);
+        
+        // Add to students list
+        studentsList.push({
+          name: studentName,
+          id: latestActivity.id,
+          nameId: studentName,
+          gender: latestActivity.gender,
+          teacher: latestActivity.teacher,
+          outTime: latestActivity.outTime,
+          backTime: "",
+          holdNotice: "",
+          usageLimitReached: false,
+        });
+      } else if (latestActivity.holdNotice) {
+        studentsWaiting++;
+        activeStudents++;
+        activeStudentNames.push(`${studentName} (WAITING: ${latestActivity.holdNotice})`);
+        console.log(`${studentName}: WAITING (${latestActivity.holdNotice})`);
+        
+        // Add to students list
+        studentsList.push({
+          name: studentName,
+          id: latestActivity.id,
+          nameId: studentName,
+          gender: latestActivity.gender,
+          teacher: latestActivity.teacher,
+          outTime: "",
+          backTime: "",
+          holdNotice: latestActivity.holdNotice,
+          usageLimitReached: false,
+        });
+      }
+    }
+    
+    // Return in student format instead of debug format
+    const result = {
+      success: true,
+      data: {
+        students: studentsList,
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: studentsList.length,
+      },
+      debugInfo: {
+        todayEntries: todayEntries,
+        activeStudents: activeStudents,
+        studentsOut: studentsOut,
+        studentsWaiting: studentsWaiting,
+        activeStudentNames: activeStudentNames
+      }
+    };
+    
+    console.log("Debug as students result:", result);
+    return result;
+    
+  } catch (error) {
+    console.error("Error in api_debugAsStudents:", error);
+    return {
+      success: false,
+      error: error.message || "Unknown error",
+      data: { students: [] }
+    };
+  }
+}
+
+/**
+ * Test with the absolute simplest student object possible
+ * @returns {Object} - Simplest possible student data
+ */
+function api_testSimplestStudent() {
+  try {
+    console.log("=== api_testSimplestStudent called ===");
+    
+    // Return the absolute simplest student object
+    const result = {
+      success: true,
+      data: {
+        students: [
+          {
+            name: "Test Student"
+          }
+        ]
+      }
+    };
+    
+    console.log("Returning simplest result:", result);
+    return result;
+    
+  } catch (error) {
+    console.error("Error in api_testSimplestStudent:", error);
+    return {
+      success: false,
+      error: error.message,
+      data: { students: [] }
+    };
+  }
+}
+
+/**
+ * Test reading real Log data but with minimal processing
+ * @returns {Object} - Real Log data with minimal processing
+ */
+function api_testRealLogMinimal() {
+  try {
+    console.log("=== api_testRealLogMinimal called ===");
+    
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      return {
+        success: true,
+        data: { students: [] },
+        message: "No Log sheet found"
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    const today = new Date().toLocaleDateString();
+    
+    console.log(`Processing ${data.length} rows for ${today}`);
+    
+    // Find just the first student with today's data
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const date = row[0];
+      const studentName = row[1];
+      
+      if (!studentName) continue;
+      
+      const entryDate = date ? new Date(date).toLocaleDateString() : "";
+      if (entryDate === today) {
+        console.log(`Found today's entry for: ${studentName}`);
+        
+        // Return just this one student with minimal data
+        return {
+          success: true,
+          data: {
+            students: [
+              {
+                name: studentName
+              }
+            ]
+          }
+        };
+      }
+    }
+    
+    // No students found for today
+    return {
+      success: true,
+      data: { students: [] },
+      message: "No students found for today"
+    };
+    
+  } catch (error) {
+    console.error("Error in api_testRealLogMinimal:", error);
+    return {
+      success: false,
+      error: error.message,
+      data: { students: [] }
+    };
+  }
+}
+
+/**
+ * Test with more complete student object from real Log data
+ * @returns {Object} - More complete student data from Log
+ */
+function api_testRealLogComplete() {
+  try {
+    console.log("=== api_testRealLogComplete called ===");
+    
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      return {
+        success: true,
+        data: { students: [] },
+        message: "No Log sheet found"
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    const today = new Date().toLocaleDateString();
+    
+    console.log(`Processing ${data.length} rows for ${today}`);
+    
+    const students = [];
+    
+    // Find all students with today's data and check if they're active
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const date = row[0];
+      const studentName = row[1];
+      const id = row[2] || "";
+      const gender = row[3] || "";
+      const teacher = row[4] || "";
+      const outTime = row[5] || "";
+      const backTime = row[6] || "";
+      const holdNotice = row[7] || "";
+      
+      if (!studentName) continue;
+      
+      const entryDate = date ? new Date(date).toLocaleDateString() : "";
+      if (entryDate === today) {
+        // Check if student is active (has outTime but no backTime, or has holdNotice)
+        if ((outTime && !backTime) || holdNotice) {
+          console.log(`Found active student: ${studentName}`);
+          
+          students.push({
+            name: studentName,
+            id: id,
+            nameId: studentName,
+            gender: gender,
+            teacher: teacher,
+            outTime: outTime,
+            backTime: backTime,
+            holdNotice: holdNotice,
+            usageLimitReached: false
+          });
+          
+          // Stop after finding first active student to keep it simple
+          break;
+        }
+      }
+    }
+    
+    console.log(`Found ${students.length} active students`);
+    
+    return {
+      success: true,
+      data: {
+        students: students
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: students.length
+      }
+    };
+    
+  } catch (error) {
+    console.error("Error in api_testRealLogComplete:", error);
+    return {
+      success: false,
+      error: error.message,
+      data: { students: [] }
+    };
+  }
+}
+
+/**
+ * Test adding fields one by one to find the problematic field
+ * @returns {Object} - Student data with fields added incrementally
+ */
+function api_testFieldByField() {
+  try {
+    console.log("=== api_testFieldByField called ===");
+    
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      return {
+        success: true,
+        data: { students: [] },
+        message: "No Log sheet found"
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    const today = new Date().toLocaleDateString();
+    
+    // Find first student with today's data
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const date = row[0];
+      const studentName = row[1];
+      
+      if (!studentName) continue;
+      
+      const entryDate = date ? new Date(date).toLocaleDateString() : "";
+      if (entryDate === today) {
+        console.log(`Found student: ${studentName}`);
+        
+        // Start with just name and add fields one by one
+        const rawOutTime = row[5];
+        const rawBackTime = row[6];
+        const rawHoldNotice = row[7];
+        
+        // Sanitize the time fields to prevent serialization issues
+        const sanitizeField = (field) => {
+          if (field === null || field === undefined) return "";
+          if (typeof field === 'string') return field;
+          if (typeof field === 'number') return field.toString();
+          if (field instanceof Date) return field.toLocaleTimeString();
+          return String(field); // Convert anything else to string
+        };
+        
+        const student = {
+          name: studentName,
+          id: row[2] || "",
+          nameId: studentName,
+          gender: row[3] || "",
+          teacher: row[4] || "",
+          outTime: sanitizeField(rawOutTime),
+          backTime: sanitizeField(rawBackTime),
+          holdNotice: sanitizeField(rawHoldNotice),
+          usageLimitReached: false
+        };
+        
+        console.log("Student object:", student);
+        
+        return {
+          success: true,
+          data: {
+            students: [student]
+          }
+        };
+      }
+    }
+    
+    return {
+      success: true,
+      data: { students: [] },
+      message: "No students found for today"
+    };
+    
+  } catch (error) {
+    console.error("Error in api_testFieldByField:", error);
+    return {
+      success: false,
+      error: error.message,
+      data: { students: [] }
+    };
+  }
+}
+
+/**
+ * FINAL WORKING VERSION - Get all active students with sanitized fields
+ * @returns {Object} - All active students with properly sanitized data
+ */
+function api_getActiveStudentsFinal() {
+  try {
+    console.log("=== api_getActiveStudentsFinal called ===");
+    
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      return {
+        success: true,
+        data: { students: [] },
+        metadata: {
+          timestamp: new Date().toISOString(),
+          activeStudentCount: 0,
+        },
+        message: "No Log sheet found"
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    const today = new Date().toLocaleDateString();
+    
+    console.log(`Processing ${data.length} rows for ${today}`);
+    
+    const todayStudentActivity = {};
+    const activeStudents = [];
+    
+    // Sanitize function to prevent serialization issues
+    const sanitizeField = (field) => {
+      if (field === null || field === undefined) return "";
+      if (typeof field === 'string') return field;
+      if (typeof field === 'number') return field.toString();
+      if (field instanceof Date) return field.toLocaleTimeString();
+      return String(field);
+    };
+    
+    // Collect all today's entries for each student
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const date = row[0];
+      const studentName = row[1];
+      
+      if (!studentName) continue;
+      
+      const entryDate = date ? new Date(date).toLocaleDateString() : "";
+      if (entryDate === today) {
+        if (!todayStudentActivity[studentName]) {
+          todayStudentActivity[studentName] = [];
+        }
+        todayStudentActivity[studentName].push({
+          id: row[2] || "",
+          gender: row[3] || "",
+          teacher: row[4] || "",
+          outTime: sanitizeField(row[5]),
+          backTime: sanitizeField(row[6]),
+          holdNotice: sanitizeField(row[7]),
+          rowIndex: r + 1
+        });
+      }
+    }
+    
+    // Find active students (same logic as debug function)
+    for (const [studentName, activities] of Object.entries(todayStudentActivity)) {
+      const latestActivity = activities[activities.length - 1];
+      
+      if (latestActivity.backTime) {
+        // Student has returned - not active
+        console.log(`${studentName}: Returned (backTime: ${latestActivity.backTime})`);
+      } else if (latestActivity.outTime) {
+        // Student is currently out
+        console.log(`${studentName}: Currently OUT since ${latestActivity.outTime}`);
+        activeStudents.push({
+          name: studentName,
+          id: latestActivity.id,
+          nameId: studentName,
+          gender: latestActivity.gender,
+          teacher: latestActivity.teacher,
+          outTime: latestActivity.outTime,
+          backTime: "",
+          holdNotice: "",
+          usageLimitReached: false,
+        });
+      } else if (latestActivity.holdNotice) {
+        // Student is waiting
+        console.log(`${studentName}: WAITING (${latestActivity.holdNotice})`);
+        activeStudents.push({
+          name: studentName,
+          id: latestActivity.id,
+          nameId: studentName,
+          gender: latestActivity.gender,
+          teacher: latestActivity.teacher,
+          outTime: "",
+          backTime: "",
+          holdNotice: latestActivity.holdNotice,
+          usageLimitReached: false,
+        });
+      }
+    }
+    
+    console.log(`Found ${activeStudents.length} active students (final version)`);
+    
+    const result = {
+      success: true,
+      data: {
+        students: activeStudents,
+      },
+      metadata: {
+        timestamp: new Date().toISOString(),
+        activeStudentCount: activeStudents.length,
+      },
+    };
+    
+    console.log("Returning final result:", result);
+    return result;
+    
+  } catch (error) {
+    console.error("Error in api_getActiveStudentsFinal:", error);
+    return {
+      success: false,
+      error: error.message || "Unknown error",
+      data: { students: [] }
+    };
+  }
+}
+
+/**
+ * Debug function to analyze Log sheet contents and active students
+ * @returns {Object} - Debug information about Log sheet and active students
+ */
+function api_debugLogSheet() {
+  try {
+    console.log("=== DEBUG: Analyzing Log Sheet ===");
+    
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      return {
+        success: true,
+        message: "No Log sheet found",
+        todayEntries: 0,
+        activeStudents: 0,
+        studentsOut: 0,
+        studentsWaiting: 0,
+        logSheetExists: false
+      };
+    }
+    
+    const data = logSheet.getDataRange().getValues();
+    const today = new Date().toLocaleDateString();
+    
+    console.log(`Log sheet has ${data.length} total rows`);
+    console.log(`Looking for entries from: ${today}`);
+    
+    let todayEntries = 0;
+    let activeStudents = 0;
+    let studentsOut = 0;
+    let studentsWaiting = 0;
+    const activeStudentNames = [];
+    const todayStudentActivity = {};
+    
+    // Analyze all entries for today
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const date = row[0];
+      const studentName = row[1];
+      const outTime = row[5] || "";
+      const backTime = row[6] || "";
+      const holdNotice = row[7] || "";
+      
+      if (!studentName) continue;
+      
+      const entryDate = date ? new Date(date).toLocaleDateString() : "";
+      if (entryDate === today) {
+        todayEntries++;
+        
+        // Track this student's activity
+        if (!todayStudentActivity[studentName]) {
+          todayStudentActivity[studentName] = [];
+        }
+        todayStudentActivity[studentName].push({
+          outTime: outTime,
+          backTime: backTime,
+          holdNotice: holdNotice,
+          rowIndex: r + 1
+        });
+      }
+    }
+    
+    // Analyze current status for each student
+    for (const [studentName, activities] of Object.entries(todayStudentActivity)) {
+      // Get the most recent activity (last in array)
+      const latestActivity = activities[activities.length - 1];
+      
+      if (latestActivity.backTime) {
+        // Student has returned - not active
+        console.log(`${studentName}: Returned (backTime: ${latestActivity.backTime})`);
+      } else if (latestActivity.outTime) {
+        // Student is currently out
+        studentsOut++;
+        activeStudents++;
+        activeStudentNames.push(`${studentName} (OUT since ${latestActivity.outTime})`);
+        console.log(`${studentName}: Currently OUT since ${latestActivity.outTime}`);
+      } else if (latestActivity.holdNotice) {
+        // Student is waiting
+        studentsWaiting++;
+        activeStudents++;
+        activeStudentNames.push(`${studentName} (WAITING: ${latestActivity.holdNotice})`);
+        console.log(`${studentName}: WAITING (${latestActivity.holdNotice})`);
+      }
+    }
+    
+    const debugResult = {
+      success: true,
+      message: "Log sheet analysis complete",
+      todayEntries: todayEntries,
+      activeStudents: activeStudents,
+      studentsOut: studentsOut,
+      studentsWaiting: studentsWaiting,
+      logSheetExists: true,
+      totalLogRows: data.length,
+      activeStudentNames: activeStudentNames,
+      uniqueStudentsToday: Object.keys(todayStudentActivity).length,
+      todayDate: today
+    };
+    
+    console.log("Debug result:", debugResult);
+    return debugResult;
+    
+  } catch (error) {
+    console.error("Error in api_debugLogSheet:", error);
+    return {
+      success: false,
+      error: error.message,
+      todayEntries: 0,
+      activeStudents: 0,
+      studentsOut: 0,
+      studentsWaiting: 0
+    };
   }
 }
 

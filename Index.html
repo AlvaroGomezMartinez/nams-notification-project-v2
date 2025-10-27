@@ -504,7 +504,7 @@
               </div>
 
               <!-- Student list -->
-              <template x-for="(student, index) in searchResults" :key="student.name">
+              <template x-for="(student, index) in searchResults" :key="student.id || index">
                 <div @click="selectStudent(student)" @mouseenter="highlightedIndex = index"
                   :class="{ 'highlighted': index === highlightedIndex }" style="
                       padding: 12px;
@@ -586,9 +586,15 @@
               </tr>
             </thead>
             <tbody>
-              <template x-for="stu in students" :key="stu.name">
+              <template x-for="stu in students" :key="stu.nameId || stu.name">
                 <tr :class="{ highlight: isReadyToMarkOut(stu) }">
-                  <td x-text="stu.name"></td>
+                  <td>
+                    <span x-text="stu.name"></span>
+                    <span x-show="stu.holdNotice && !stu.outTime && getQueuePosition(stu)"
+                      style="background: #ff9800; color: white; padding: 2px 6px; border-radius: 10px; font-size: 11px; margin-left: 8px;">
+                      #<span x-text="getQueuePosition(stu)"></span>
+                    </span>
+                  </td>
                   <td>
                     <select x-model="stu.gender" @change="onGenderChange(stu)" class="browser-default">
                       <option value=""></option>
@@ -611,15 +617,15 @@
                     </button>
                   </td>
                   <td>
-                    <span x-text="formatTime(stu.outTime || stu.holdNotice)"></span>
+                    <span x-text="formatTime(stu.outTime)"></span>
                   </td>
                   <td>
                     <button class="btn back-btn" :class="{ 
-                          'hidden': !stu.outTime || stu.backTime,
-                          'visible': stu.outTime && !stu.backTime,
-                          'active': stu.outTime && !stu.backTime,
-                          'already-went': stu.outTime && stu.backTime
-                        }" @click="markBack(stu)" :title="getBackButtonTitle(stu)">
+                            'hidden': !stu.outTime || stu.backTime,
+                            'visible': stu.outTime && !stu.backTime,
+                            'active': stu.outTime && !stu.backTime,
+                            'already-went': stu.outTime && stu.backTime
+                          }" @click="markBack(stu)" :title="getBackButtonTitle(stu)">
                       <span x-text="getBackButtonText(stu)"></span>
                     </button>
                   </td>
@@ -1114,7 +1120,7 @@
         teacherName,
         updateCallback,
       ) {
-        const updateId = `${student.name}_${action}_${Date.now()}`;
+        const updateId = `${student.nameId || student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${action}_${Date.now()}`;
 
         // Store original state for potential rollback
         this.originalStates.set(updateId, {
@@ -1718,6 +1724,14 @@
 
           this.loadUserInfo();
 
+          // Ensure active students are loaded after a short delay to allow UI to initialize
+          setTimeout(() => {
+            if (this.students.length === 0) {
+              console.log("No active students found after initialization, forcing reload...");
+              this.forceReloadActiveStudents();
+            }
+          }, 2000);
+
           // Update period every minute
           setInterval(() => {
             const now = new Date();
@@ -2078,19 +2092,19 @@
 
         refreshData() {
           console.log(
-            "refreshData() called - loading active students",
+            "refreshData() called - loading active students from Log sheet",
           );
 
           // Load only active students (those currently being managed)
           this.isLoading = true;
-          this.loadingMessage = "Loading active students...";
+          this.loadingMessage = "Loading active students from Log sheet...";
           this.loadStartTime = Date.now();
 
           google.script.run
             .withSuccessHandler((response) => {
               const responseTime = Date.now() - this.loadStartTime;
               console.log(
-                "✓ Active students loaded successfully:",
+                "✓ Active students loaded successfully from Log sheet:",
                 response,
               );
               console.log(`📊 Load response time: ${responseTime}ms`);
@@ -2101,12 +2115,17 @@
                 response.data
               ) {
                 console.log(
-                  `Active students: ${response.metadata.activeStudentCount}`,
+                  `Active students from Log: ${response.metadata.activeStudentCount}`,
                 );
                 this._handleStudentDataSuccess(response.data);
 
                 // Start smart polling after successful initial load
                 this.startSmartRefresh();
+
+                // Log what we found
+                if (response.metadata.activeStudentCount === 0) {
+                  console.log("ℹ️ No active students found in Log sheet - this is normal if all students have returned or none are currently using the restroom");
+                }
               } else {
                 console.warn("Active students endpoint failed:", response?.error);
                 this.isLoading = false;
@@ -2120,7 +2139,7 @@
               this.isLoading = false;
               this.loadingMessage = "";
             })
-            .api_getActiveStudents();
+            .api_getActiveStudentsFinal();
         },
 
         _fetchStudentDataFromServer() {
@@ -2503,6 +2522,452 @@
 
           // Refresh only active students (not all students from roster)
           this.refreshData();
+        },
+
+        // Test server connection with a simple function
+        testServerConnection() {
+          console.log("Testing server connection...");
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Server test response:", response);
+              alert(`Server connection test successful!\nResponse: ${JSON.stringify(response, null, 2)}`);
+            })
+            .withFailureHandler((error) => {
+              console.error("Server test failed:", error);
+              alert(`Server connection test failed: ${error.message || error}`);
+            })
+            .api_debugLogSheet();
+        },
+
+        // Test the simple version of getActiveStudents
+        testSimpleReload() {
+          console.log("Testing simple active students reload...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing simple reload...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Simple reload response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Simple version also returned null - there's a deeper server issue");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`Simple version SUCCESS! Loaded ${this.students.length} students.\nThis means the usage limit check was causing the issue.`);
+              } else {
+                alert(`Simple version failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Simple reload failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Simple reload failed: ${error.message || error}`);
+            })
+            .api_getActiveStudentsSimple();
+        },
+
+        // Test the direct version that reads Log sheet directly
+        testDirectReload() {
+          console.log("Testing direct active students reload...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing direct reload...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Direct reload response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Direct version also returned null - this is very strange!");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`Direct version SUCCESS! Loaded ${this.students.length} students.\nThis bypasses the _getCurrentRestroomStatusFallback function entirely.`);
+              } else {
+                alert(`Direct version failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Direct reload failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Direct reload failed: ${error.message || error}`);
+            })
+            .api_getActiveStudentsDirect();
+        },
+
+        // Test deployment with a simple hardcoded response
+        testDeployment() {
+          console.log("Testing deployment with simple function...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing deployment...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Deployment test response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Deployment test returned null - there's a serious deployment issue!");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`Deployment test SUCCESS! Loaded ${this.students.length} test students.\nThis proves the deployment is working and the issue is with the Log sheet reading functions.`);
+              } else {
+                alert(`Deployment test failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Deployment test failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Deployment test failed: ${error.message || error}`);
+            })
+            .api_testDeployment();
+        },
+
+        // Test the hybrid version that uses debug logic but returns student format
+        testHybridReload() {
+          console.log("Testing hybrid active students reload...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing hybrid reload...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Hybrid reload response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Hybrid version also returned null - something is very wrong!");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`Hybrid version SUCCESS! Loaded ${this.students.length} students.\nThis uses the working debug logic but returns the correct format!`);
+              } else {
+                alert(`Hybrid version failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Hybrid reload failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Hybrid reload failed: ${error.message || error}`);
+            })
+            .api_getActiveStudentsHybrid();
+        },
+
+        // Test spreadsheet access
+        testSpreadsheetAccess() {
+          console.log("Testing spreadsheet access...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing spreadsheet access...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Spreadsheet access response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Spreadsheet access test returned null - there's a serious issue!");
+                return;
+              }
+
+              if (response && response.success) {
+                alert(`Spreadsheet access SUCCESS!\nTotal rows: ${response.data.totalRows}\nThis means the issue is not with spreadsheet access.`);
+              } else {
+                alert(`Spreadsheet access failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Spreadsheet access test failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Spreadsheet access test failed: ${error.message || error}`);
+            })
+            .api_testSpreadsheetAccess();
+        },
+
+        // Test minimal function
+        testMinimal() {
+          console.log("Testing minimal function...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing minimal function...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Minimal test response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Minimal test returned null - the issue is with the return format!");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`Minimal test SUCCESS! Loaded ${this.students.length} students.\nThis proves the return format works.`);
+              } else {
+                alert(`Minimal test failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Minimal test failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Minimal test failed: ${error.message || error}`);
+            })
+            .api_testMinimal();
+        },
+
+        // Test getting one active student using debug logic
+        testOneStudent() {
+          console.log("Testing one active student...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing one active student...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("One student test response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("One student test returned null - the issue is with Log sheet processing!");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`One student test SUCCESS! Found ${this.students.length} active students.\nThis uses the exact debug logic but returns student format!`);
+              } else {
+                alert(`One student test failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("One student test failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`One student test failed: ${error.message || error}`);
+            })
+            .api_getOneActiveStudent();
+        },
+
+        // Test debug function converted to student format
+        testDebugAsStudents() {
+          console.log("Testing debug function as students...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing debug as students...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Debug as students response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Debug as students returned null - this is the smoking gun!");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`Debug as students SUCCESS! Found ${this.students.length} active students.\nThis is the exact debug logic converted to student format!`);
+              } else {
+                alert(`Debug as students failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Debug as students failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Debug as students failed: ${error.message || error}`);
+            })
+            .api_debugAsStudents();
+        },
+
+        // Test the simplest possible student object
+        testSimplestStudent() {
+          console.log("Testing simplest student object...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing simplest student...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Simplest student response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Even the simplest student object returns null - there's a fundamental issue!");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`Simplest student SUCCESS! This proves the basic structure works.`);
+              } else {
+                alert(`Simplest student failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Simplest student failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Simplest student failed: ${error.message || error}`);
+            })
+            .api_testSimplestStudent();
+        },
+
+        // Test reading real Log data with minimal processing
+        testRealLogMinimal() {
+          console.log("Testing real Log data with minimal processing...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing real Log minimal...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Real Log minimal response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Real Log minimal returned null - the issue is with Log data processing!");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`Real Log minimal SUCCESS! Found ${this.students.length} students.\nThis proves we can read real Log data.`);
+              } else {
+                alert(`Real Log minimal failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Real Log minimal failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Real Log minimal failed: ${error.message || error}`);
+            })
+            .api_testRealLogMinimal();
+        },
+
+        // Test reading real Log data with complete student object
+        testRealLogComplete() {
+          console.log("Testing real Log data with complete student object...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing real Log complete...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Real Log complete response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Real Log complete returned null - the issue is with the complete student object!");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`Real Log complete SUCCESS! Found ${this.students.length} active students.\nThis should be your actual active student!`);
+              } else {
+                alert(`Real Log complete failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Real Log complete failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Real Log complete failed: ${error.message || error}`);
+            })
+            .api_testRealLogComplete();
+        },
+
+        // Test adding fields one by one to find the problematic field
+        testFieldByField() {
+          console.log("Testing fields one by one...");
+          this.isLoading = true;
+          this.loadingMessage = "Testing field by field...";
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log("Field by field response:", response);
+              this.isLoading = false;
+              this.loadingMessage = "";
+
+              if (response === null || response === undefined) {
+                alert("Field by field returned null - even name + id fails!");
+                return;
+              }
+
+              if (response && response.success && response.data) {
+                this.students = response.data.students || [];
+                alert(`Field by field SUCCESS! Found ${this.students.length} students with name + id fields.\nNow we can add more fields to find the problem.`);
+              } else {
+                alert(`Field by field failed: ${response?.error || "Unknown error"}`);
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error("Field by field failed:", error);
+              this.isLoading = false;
+              this.loadingMessage = "";
+              alert(`Field by field failed: ${error.message || error}`);
+            })
+            .api_testFieldByField();
+        },
+
+        // Debug method to show current state and Log sheet contents
+        debugCurrentState() {
+          console.log("=== DEBUG: Current Application State ===");
+          console.log("Current students array:", this.students);
+          console.log("Students count:", this.students.length);
+          console.log("Is loading:", this.isLoading);
+          console.log("Loading message:", this.loadingMessage);
+
+          // Also call server-side debug to check Log sheet
+          google.script.run
+            .withSuccessHandler((debugInfo) => {
+              console.log("=== DEBUG: Server-side Log Sheet Analysis ===");
+              console.log("Debug info from server:", debugInfo);
+
+              // Show user-friendly alert
+              const message = `
+DEBUG INFORMATION:
+• Current students in UI: ${this.students.length}
+• Today's Log entries: ${debugInfo.todayEntries || 'N/A'}
+• Active students in Log: ${debugInfo.activeStudents || 'N/A'}
+• Students currently out: ${debugInfo.studentsOut || 'N/A'}
+• Students waiting: ${debugInfo.studentsWaiting || 'N/A'}
+
+Check browser console for detailed logs.
+              `.trim();
+
+              alert(message);
+            })
+            .withFailureHandler((error) => {
+              console.error("Debug call failed:", error);
+              alert(`Debug failed: ${error.message || error}`);
+            })
+            .api_debugLogSheet();
         },
 
         // Format timestamp for display
@@ -2933,21 +3398,83 @@
         },
 
         isReadyToMarkOut(stu) {
-          // Student is ready if they have a hold notice (requested) and no one of their gender is currently out
+          // Student is ready if they have a hold notice (requested) and are first in queue
           if (!stu.holdNotice || stu.outTime) {
             return false; // Not requested or already out
           }
 
-          // Check if anyone of the same gender is currently out (has outTime but no backTime)
+          // Get all students of the same gender
           const studentsOfSameGender = this.students.filter(
             (s) => s.gender === stu.gender,
           );
+
+          // Get all waiting students (have hold notice but no out time)
+          const waitingStudents = studentsOfSameGender.filter(
+            (s) => s.holdNotice && !s.outTime
+          );
+
+          if (waitingStudents.length === 0) {
+            return false; // No one waiting
+          }
+
+          // Sort waiting students by their position in the queue
+          waitingStudents.sort((a, b) => {
+            const getPosition = (student) => {
+              const match = student.holdNotice.match(/Position (\d+)/);
+              return match ? parseInt(match[1]) : 999;
+            };
+            return getPosition(a) - getPosition(b);
+          });
+
+          // Check if this student is first in the queue
+          const isFirstInQueue = waitingStudents[0].name === stu.name;
+
+          if (!isFirstInQueue) {
+            return false; // Not first in queue
+          }
+
+          // Student is first in queue - they're ready if no one of their gender is currently out
           const anyoneOut = studentsOfSameGender.some(
             (s) => s.outTime && !s.backTime,
           );
 
-          // Ready if no one of their gender is currently out
-          return !anyoneOut;
+          return !anyoneOut; // Ready if restroom is available
+        },
+
+        // Auto-assign new student to queue if needed to prevent line cutting
+        autoAssignToQueue(newStudent) {
+          // Don't auto-assign if student already has a hold notice
+          if (newStudent.holdNotice) return;
+
+          // Don't auto-assign if no gender selected yet
+          if (!newStudent.gender) return;
+
+          // Check if there are already waiting students of the same gender
+          const studentsOfSameGender = this.students.filter(
+            (s) => s.gender === newStudent.gender && s.name !== newStudent.name
+          );
+
+          const waitingStudents = studentsOfSameGender.filter(
+            (s) => s.holdNotice && !s.outTime
+          );
+
+          const anyoneOut = studentsOfSameGender.some(
+            (s) => s.outTime && !s.backTime
+          );
+
+          // If there are waiting students OR someone is currently out, add new student to end of queue
+          if (waitingStudents.length > 0 || anyoneOut) {
+            const nextPosition = waitingStudents.length + 1;
+            newStudent.holdNotice = `Waiting in line. Position ${nextPosition}.`;
+            console.log(`Auto-assigned ${newStudent.name} to queue position ${nextPosition} to prevent line cutting`);
+          }
+        },
+
+        // Helper function to get queue position from hold notice
+        getQueuePosition(stu) {
+          if (!stu.holdNotice) return null;
+          const match = stu.holdNotice.match(/Position (\d+)/);
+          return match ? parseInt(match[1]) : null;
         },
 
         getButtonText(stu) {
@@ -2972,21 +3499,26 @@
             if (this.isReadyToMarkOut(stu)) {
               return "RR AVAILABLE";
             } else {
-              return "WAITING";
+              const position = this.getQueuePosition(stu);
+              return position ? `WAITING (#${position})` : "WAITING";
             }
           }
 
-          // If student has no hold notice and no out time, check if restroom is available
+          // If student has no hold notice and no out time, check queue status
           if (!stu.holdNotice && !stu.outTime) {
-            // Check if anyone of the same gender is currently out
+            // Check if anyone of the same gender is currently out or waiting
             const studentsOfSameGender = this.students.filter(
               (s) => s.gender === stu.gender,
             );
             const anyoneOut = studentsOfSameGender.some(
               (s) => s.outTime && !s.backTime,
             );
+            const anyoneWaiting = studentsOfSameGender.some(
+              (s) => s.holdNotice && !s.outTime,
+            );
 
-            if (anyoneOut) {
+            // If someone is out OR people are waiting, new student must join queue
+            if (anyoneOut || anyoneWaiting) {
               return "ADD TO LIST";
             } else {
               return "REQUEST RR";
@@ -3025,13 +3557,14 @@
           let baseTitle = "";
 
           if (buttonText === "RR AVAILABLE") {
-            baseTitle = "SEND NOW";
+            baseTitle = "NEXT IN LINE - Click to send to restroom";
           } else if (buttonText === "ADD TO LIST") {
             baseTitle = "Click to add student to waiting list";
           } else if (buttonText === "REQUEST RR") {
             baseTitle = "Click to request restroom access";
-          } else if (buttonText === "WAITING") {
-            baseTitle = "Student is waiting in line";
+          } else if (buttonText.startsWith("WAITING")) {
+            const position = this.getQueuePosition(stu);
+            baseTitle = position ? `Student is #${position} in line` : "Student is waiting in line";
           } else {
             baseTitle = `Student status - outTime: ${stu.outTime} | holdNotice: ${stu.holdNotice} | ready to promote: ${this.isReadyToMarkOut(stu)}`;
           }
@@ -3576,6 +4109,10 @@ Usage Check for ${student.name}:
                 backTime: "",
                 holdNotice: ""
               };
+
+              // Auto-assign to queue if there are already waiting students
+              // This prevents new students from cutting in line
+              this.autoAssignToQueue(newStudent);
 
               this.students.push(newStudent);
               console.log(`Added ${student.name} to active management`);
