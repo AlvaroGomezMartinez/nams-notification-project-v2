@@ -1504,8 +1504,9 @@ function api_checkStudentUsageLimit(studentName) {
       }
       
       if (isToday) {
-        // Check if student is currently out or waiting
-        if ((outTime && !backTime) || holdNotice) {
+        // Check if student is currently out (has outTime but no backTime)
+        // Don't count waiting students (holdNotice only) as "currently out"
+        if (outTime && !backTime) {
           currentlyOut = true;
         }
         
@@ -1538,7 +1539,7 @@ function api_checkStudentUsageLimit(studentName) {
     // Determine if student can use restroom
     if (currentlyOut) {
       result.canUseRestroom = false;
-      result.reason = "Student is already in the restroom management system";
+      result.reason = "Student is currently out at the restroom";
     } else if (currentPeriod === "afternoon" && afternoonUsage >= 1) {
       result.canUseRestroom = false;
       result.reason = "Already used restroom once in the afternoon";
