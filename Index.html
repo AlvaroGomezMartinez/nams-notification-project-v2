@@ -116,6 +116,8 @@
       background-color: #f5f5f5;
       font-weight: 600;
       text-align: center !important;
+      padding: 12px 8px;
+      border-bottom: 1px solid #e0e0e0;
     }
 
     /* Modern Spinner CSS Custom Properties */
@@ -216,10 +218,10 @@
 
     /* Enhanced button states for new behavior */
     .out-btn.currently-out {
-      background-color: #ffc107 !important;
-      /* yellow for CURRENTLY OUT */
-      color: #000000 !important;
-      /* black text for better contrast on yellow */
+      background-color: #ff000e !important;
+      /* red for CURRENTLY OUT */
+      color: #ffffff !important;
+      /* white text for better contrast on red */
       pointer-events: none;
       opacity: 1;
       font-weight: 600;
@@ -250,9 +252,9 @@
     }
 
     .back-btn.active {
-      background-color: #d32f2f !important;
-      /* red when student is out and needs to come back */
-      color: white !important;
+      background-color: #93c37e !important;
+      /* green when student is out and needs to come back */
+      color: #000000 !important;
     }
 
     .back-btn.disabled {
@@ -341,7 +343,7 @@
 
     /* Enhanced Back button active state */
     .back-btn.active:hover {
-      background-color: #c62828 !important;
+      background-color: #fdfd00 !important;
       transform: translateY(-1px) scale(1);
       box-shadow: 0 4px 8px rgba(211, 47, 47, 0.3);
     }
@@ -391,14 +393,39 @@
     }
 
     /* Center table headers */
-    th {
-      text-align: center !important;
-    }
-
-    /* Clean table headers */
+    th,
     .table-container thead th {
+      text-align: center !important;
       background: #f5f5f5;
       font-weight: 600;
+    }
+
+    /* Center specific table data columns */
+    .table-container tbody td:nth-child(2),
+    /* Gender column */
+    .table-container tbody td:nth-child(6),
+    /* Return Status column */
+    .table-container tbody td:nth-child(7),
+    /* Back Time column */
+    .table-container tbody td:nth-child(8)
+
+    /* Remove column */
+      {
+      text-align: center;
+    }
+
+    /* Keep student name and teacher columns left-aligned for readability */
+    .table-container tbody td:nth-child(1),
+    /* Student Name column */
+    /* Gender column */
+    .table-container tbody td:nth-child(2),
+    /* Teacher column */
+    .table-container tbody td:nth-child(3),
+    /* Request Status column */
+    .table-container tbody td:nth-child(4),
+    /* Out Time column */
+    .table-container tbody td:nth-child(5) {
+      text-align: left;
     }
   </style>
 </head>
@@ -417,6 +444,7 @@
             display: block;
             margin-bottom: 5px;
           "></small>
+
 
       <!-- Auto-detected teacher info -->
       <div class="row" x-show="detectedTeacher">
@@ -446,8 +474,8 @@
     <!-- Student Search Section -->
     <div class="row">
       <div class="col s12">
+        <h3 style="margin-top: 0">ADD STUDENT</h3>
         <div class="card-panel" style="padding: 15px">
-          <h5 style="margin-top: 0">ADD STUDENT</h5>
 
           <!-- Search Input -->
           <div style="position: relative; margin-bottom: 15px">
@@ -537,7 +565,7 @@
     <div class="row">
       <!-- Active Students table column -->
       <div class="col s12">
-        <h5>RESTROOM LIST</h5>
+        <h3>RESTROOM LIST</h3>
 
         <div class="table-container" style="position: relative">
           <!-- Loading Spinner Overlay -->
@@ -576,12 +604,12 @@
             <thead>
               <tr>
                 <th>Student Name</th>
-                <th>Gender</th>
+                <th>G or B</th>
                 <th>Teacher</th>
-                <th>Request Status</th>
-                <th>Out Time</th>
-                <th>Return Status</th>
-                <th>Back Time</th>
+                <th>RR Status</th>
+                <th>Out</th>
+                <th>Return</th>
+                <th>Back</th>
                 <th>Remove</th>
               </tr>
             </thead>
@@ -594,6 +622,7 @@
                       style="background: #ff9800; color: white; padding: 2px 6px; border-radius: 10px; font-size: 11px; margin-left: 8px;">
                       #<span x-text="getQueuePosition(stu)"></span>
                     </span>
+
                   </td>
                   <td>
                     <select x-model="stu.gender" @change="onGenderChange(stu)" class="browser-default">
@@ -633,10 +662,9 @@
                     <span x-text="formatTime(stu.backTime)"></span>
                   </td>
                   <td>
-                    <button class="btn"
-                      style="background-color: #f44336; color: white; padding: 4px 8px; font-size: 12px;"
-                      @click="removeStudent(stu)" title="Remove student from active management">
-                      <i class="material-icons" style="font-size: 16px;">close</i>
+                    <button class="btn" :style="getRemoveButtonStyle(stu)" @click="handleRemoveClick(stu)"
+                      :title="getRemoveButtonTitle(stu)">
+                      <i class="material-icons" style="font-size: 16px;" x-text="getRemoveButtonIcon(stu)"></i>
                     </button>
                   </td>
                 </tr>
@@ -1728,7 +1756,7 @@
           setTimeout(() => {
             if (this.students.length === 0) {
               console.log("No active students found after initialization, forcing reload...");
-              this.forceReloadActiveStudents();
+              this.refreshData();
             }
           }, 2000);
 
@@ -1738,6 +1766,22 @@
             this.periodString = this.getCurrentPeriod(now);
             this.nextPeriodString = this.getNextPeriod(now);
           }, 60000);
+
+          // Check for auto-removal only at the specific times: 12:00 PM and 12:00 AM
+          setInterval(() => {
+            const now = new Date();
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+
+            // Only run auto-removal at exactly 12:00 PM (noon) and 12:00 AM (midnight)
+            if ((hour === 12 && minute === 0) || (hour === 0 && minute === 0)) {
+              const removedCount = this.autoRemoveExpiredStudents();
+              if (removedCount > 0) {
+                const timeLabel = hour === 12 ? "noon" : "midnight";
+                console.log(`Auto-removed ${removedCount} students at ${timeLabel} (${now.toLocaleTimeString()})`);
+              }
+            }
+          }, 60000); // Check every minute, but only act at 12:00 PM and 12:00 AM
 
           // Clean up old optimistic updates every 30 seconds
           setInterval(() => {
@@ -2233,12 +2277,16 @@
                   console.log("No student data changes detected");
                   // Still update cache with fresh timestamp
                   this.localCache.set("studentData", data, 30); // 30 minutes cache
+
+
                 }
               } else {
                 console.log(
                   "Background fetch returned invalid data (not critical):",
                   response,
                 );
+
+
               }
             })
             .withFailureHandler((error) => {
@@ -2246,6 +2294,8 @@
                 "Background student data fetch failed (not critical):",
                 error,
               );
+
+
             })
             .api_getActiveStudents();
         },
@@ -2254,7 +2304,33 @@
           const startTime = this.loadStartTime || Date.now();
           const loadTime = Date.now() - startTime;
 
-          this.students = data.students;
+          // Preserve completed students who shouldn't be auto-removed yet
+          const completedStudentsToKeep = [];
+          if (this.students && this.students.length > 0) {
+            this.students.forEach(student => {
+              // Keep students who have completed their trip but shouldn't be auto-removed yet
+              if (student.outTime && student.backTime && !this.shouldAutoRemoveStudent(student)) {
+                completedStudentsToKeep.push(student);
+                console.log(`Preserving completed student: ${student.name} (used restroom at ${student.outTime})`);
+              }
+            });
+          }
+
+          // Set new active students from server
+          this.students = data.students || [];
+
+          // Add back the completed students that should be preserved
+          completedStudentsToKeep.forEach(student => {
+            // Only add if not already in the new data
+            const existingStudent = this.students.find(s => s.name === student.name);
+            if (!existingStudent) {
+              this.students.push(student);
+              console.log(`Re-added completed student: ${student.name}`);
+            }
+          });
+
+          // Sort students: active students first, completed students last
+          this.sortStudentsByStatus();
 
           // Cache the student data
           this.localCache.set("studentData", data, 30); // Cache for 30 minutes
@@ -2523,6 +2599,8 @@
           // Refresh only active students (not all students from roster)
           this.refreshData();
         },
+
+
 
         // Test server connection with a simple function
         testServerConnection() {
@@ -2835,6 +2913,8 @@
             })
             .api_testSimplestStudent();
         },
+
+
 
         // Test reading real Log data with minimal processing
         testRealLogMinimal() {
@@ -3439,6 +3519,143 @@ Check browser console for detailed logs.
           );
 
           return !anyoneOut; // Ready if restroom is available
+        },
+
+        // Check if a student should be automatically removed based on time periods
+        shouldAutoRemoveStudent(stu) {
+          // Only remove students who have completed their trip (both out and back times)
+          if (!stu.outTime || !stu.backTime) {
+            return false;
+          }
+
+          const now = new Date();
+          const currentHour = now.getHours();
+
+          // Parse the out time to determine if it was AM or PM usage
+          const outTimeStr = stu.outTime.toString().toLowerCase();
+          const isAfternoonUsage = outTimeStr.includes('pm');
+          const isMorningUsage = outTimeStr.includes('am');
+
+          // Debug logging for this student
+          console.log(`Checking auto-removal for ${stu.name}:`);
+          console.log(`  - Out time: ${stu.outTime} (AM: ${isMorningUsage}, PM: ${isAfternoonUsage})`);
+          console.log(`  - Back time: ${stu.backTime}`);
+          console.log(`  - Current hour: ${currentHour}`);
+
+          // If we can't determine the period from the time string, don't auto-remove
+          if (!isAfternoonUsage && !isMorningUsage) {
+            console.log(`  - Cannot determine AM/PM, keeping student`);
+            return false;
+          }
+
+          // Remove AM users at noon or later (12:00 PM and beyond)
+          if (isMorningUsage && currentHour >= 12) {
+            console.log(`  - Auto-removing ${stu.name} - used restroom in AM, now past noon (${currentHour}:xx)`);
+            return true;
+          }
+
+          // Remove PM users at midnight or later (but before noon the next day)
+          // This handles the day transition properly
+          if (isAfternoonUsage) {
+            // Get the date when the student went out
+            const outDate = this.parseOutTimeToDate(stu.outTime);
+            if (outDate) {
+              const currentDate = new Date();
+
+              // If it's a different day and we're past midnight, remove them
+              if (currentDate.getDate() !== outDate.getDate() ||
+                currentDate.getMonth() !== outDate.getMonth() ||
+                currentDate.getFullYear() !== outDate.getFullYear()) {
+                console.log(`  - Auto-removing ${stu.name} - used restroom in PM yesterday, now past midnight`);
+                return true;
+              }
+            }
+          }
+
+          console.log(`  - Keeping student (not time to auto-remove yet)`);
+          return false;
+        },
+
+        // Helper function to parse out time and get the date it occurred
+        parseOutTimeToDate(outTimeStr) {
+          try {
+            // For now, assume the out time is from today
+            // In a more robust implementation, you might store the full date/time
+            const today = new Date();
+            return today;
+          } catch (error) {
+            console.error("Error parsing out time date:", error);
+            return null;
+          }
+        },
+
+        // Automatically remove students who should no longer be on the table
+        autoRemoveExpiredStudents() {
+          const studentsToRemove = [];
+
+          this.students.forEach((student, index) => {
+            if (this.shouldAutoRemoveStudent(student)) {
+              studentsToRemove.push({ student, index });
+            }
+          });
+
+          // Remove students in reverse order to maintain correct indices
+          studentsToRemove.reverse().forEach(({ student, index }) => {
+            console.log(`Auto-removing expired student: ${student.name}`);
+            this.students.splice(index, 1);
+          });
+
+          if (studentsToRemove.length > 0) {
+            console.log(`Auto-removed ${studentsToRemove.length} expired students`);
+
+            // Show a brief notification when students are auto-removed
+            this.showSuccessMessage(`Auto-removed ${studentsToRemove.length} student${studentsToRemove.length > 1 ? 's' : ''} who completed their restroom visits.`);
+          }
+
+          return studentsToRemove.length;
+        },
+
+        // Sort students by status: active students first, completed students last
+        sortStudentsByStatus() {
+          this.students.sort((a, b) => {
+            // Determine status for student a
+            const aCompleted = a.outTime && a.backTime;
+            const aNewlyAdded = !a.outTime && !a.backTime && !a.holdNotice; // Newly added student
+            const aActive = !aCompleted && (a.outTime || a.holdNotice || aNewlyAdded);
+
+            // Determine status for student b
+            const bCompleted = b.outTime && b.backTime;
+            const bNewlyAdded = !b.outTime && !b.backTime && !b.holdNotice; // Newly added student
+            const bActive = !bCompleted && (b.outTime || b.holdNotice || bNewlyAdded);
+
+            // Sort order: active students first, then completed students
+            if (aActive && bCompleted) return -1; // a (active/new) comes before b (completed)
+            if (aCompleted && bActive) return 1;  // b (active/new) comes before a (completed)
+
+            // Within active students, prioritize by status:
+            // 1. Currently out (has outTime, no backTime)
+            // 2. Waiting (has holdNotice)
+            // 3. Newly added (no outTime, no holdNotice, no backTime)
+            if (aActive && bActive) {
+              const aCurrentlyOut = a.outTime && !a.backTime;
+              const bCurrentlyOut = b.outTime && !b.backTime;
+              const aWaiting = a.holdNotice && !a.outTime;
+              const bWaiting = b.holdNotice && !b.outTime;
+
+              // Currently out students first
+              if (aCurrentlyOut && !bCurrentlyOut) return -1;
+              if (!aCurrentlyOut && bCurrentlyOut) return 1;
+
+              // Then waiting students
+              if (aWaiting && bNewlyAdded) return -1;
+              if (bWaiting && aNewlyAdded) return 1;
+            }
+
+            // If both have same status, sort alphabetically by name
+            return a.name.localeCompare(b.name);
+          });
+
+          console.log(`Sorted ${this.students.length} students: active first, completed last`);
         },
 
         // Auto-assign new student to queue if needed to prevent line cutting
@@ -4117,6 +4334,9 @@ Usage Check for ${student.name}:
               this.students.push(newStudent);
               console.log(`Added ${student.name} to active management`);
 
+              // Sort students to maintain proper order
+              this.sortStudentsByStatus();
+
               // Scroll to the table so user can see the new student
               setTimeout(() => {
                 const tableContainer = document.querySelector('.table-container');
@@ -4146,6 +4366,9 @@ Usage Check for ${student.name}:
 
               this.students.push(newStudent);
               console.log(`Added ${student.name} to active management (failsafe mode)`);
+
+              // Sort students to maintain proper order
+              this.sortStudentsByStatus();
             })
             .api_checkStudentUsageLimit(student.name);
         },
@@ -4257,14 +4480,122 @@ Usage Check for ${student.name}:
         },
 
         /**
-         * Remove a student from active management
+         * Get remove button styling based on student status
          */
-        removeStudent(student) {
-          if (confirm(`Remove ${student.name} from active management?`)) {
+        getRemoveButtonStyle(stu) {
+          if (stu.outTime && stu.backTime) {
+            // Student has already went - show as info button (non-clickable)
+            return "background-color: #2196f3; color: white; padding: 4px 8px; font-size: 12px; cursor: default;";
+          } else {
+            // Regular remove button
+            return "background-color: #f44336; color: white; padding: 4px 8px; font-size: 12px; cursor: pointer;";
+          }
+        },
+
+        /**
+         * Get remove button icon based on student status
+         */
+        getRemoveButtonIcon(stu) {
+          if (stu.outTime && stu.backTime) {
+            return "info"; // Info icon for students who already went
+          } else {
+            return "close"; // Close icon for active removal
+          }
+        },
+
+        /**
+         * Get remove button title based on student status
+         */
+        getRemoveButtonTitle(stu) {
+          if (stu.outTime && stu.backTime) {
+            const outTimeStr = stu.outTime.toString().toLowerCase();
+            const isAfternoonUsage = outTimeStr.includes('pm');
+            const isMorningUsage = outTimeStr.includes('am');
+
+            if (isMorningUsage) {
+              return `${stu.name} already went to the restroom in AM.`;
+            } else if (isAfternoonUsage) {
+              return `${stu.name} already went to the restroom in PM.`;
+            } else {
+              return `${stu.name} already had a restroom visit.`;
+            }
+          } else {
+            return "Remove student from active management";
+          }
+        },
+
+
+
+        /**
+         * Handle remove button click - only allow removal for active students
+         */
+        handleRemoveClick(student) {
+          // Don't allow manual removal of students who have completed their trip
+          if (student.outTime && student.backTime) {
+            // Do nothing - completed students can only be removed automatically
+            return;
+          }
+
+          // Only allow removal of active students (those still using restroom or waiting)
+          this.removeStudentAndLog(student);
+        },
+
+        /**
+         * Remove a student from active management and clear their log entries
+         */
+        removeStudentAndLog(student) {
+          const confirmMessage = `Remove ${student.name} from the restroom list?\n\nThis will also clear their restroom log entries for today.`;
+
+          if (confirm(confirmMessage)) {
+            // Remove from UI immediately
             const index = this.students.findIndex(s => s.name === student.name);
             if (index !== -1) {
               this.students.splice(index, 1);
-              console.log(`Removed ${student.name} from active management`);
+              console.log(`Removed ${student.name} from the restroom list`);
+            }
+
+            // Also remove from server Log sheet
+            this.removeStudentFromLog(student.name);
+          }
+        },
+
+        /**
+         * Remove a student's log entries from the server Log sheet
+         */
+        removeStudentFromLog(studentName) {
+          console.log(`Removing log entries for ${studentName} from server...`);
+
+          google.script.run
+            .withSuccessHandler((response) => {
+              console.log(`Log removal response for ${studentName}:`, response);
+              if (response && response.success) {
+                console.log(`Successfully removed ${studentName} from Log sheet`);
+                if (response.entriesRemoved > 0) {
+                  this.showSuccessMessage(`Removed ${studentName} and cleared ${response.entriesRemoved} log entries`);
+                }
+              } else {
+                console.warn(`Failed to remove ${studentName} from Log sheet:`, response?.error);
+                // Don't show error to user since the UI removal already happened
+              }
+            })
+            .withFailureHandler((error) => {
+              console.error(`Error removing ${studentName} from Log sheet:`, error);
+              // Don't show error to user since the UI removal already happened
+            })
+            .api_removeStudentFromLog(studentName);
+        },
+
+        /**
+         * Remove a student from active management (legacy function for other uses)
+         */
+        removeStudent(student) {
+          const confirmMessage = `Remove ${student.name} from the restroom list?`;
+
+          if (confirm(confirmMessage)) {
+            const index = this.students.findIndex(s => s.name === student.name);
+            if (index !== -1) {
+              this.students.splice(index, 1);
+              console.log(`Removed ${student.name} from the restroom list.`);
             }
           }
         },

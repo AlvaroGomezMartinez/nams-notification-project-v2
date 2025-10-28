@@ -31,11 +31,20 @@
         <li>Make sure you only archive when you are ready to permanently move that day's AM/PM log rows to the database.</li>
       </ol>
 
+      <h3>Auto-Removal Feature</h3>
+      <p>Students who have completed their restroom visits will now stay on the table with an "ALREADY WENT" status instead of being removed immediately. This helps teachers track who has used the restroom during each part of the day.</p>
+      <ul>
+        <li><strong>Morning Users (AM):</strong> Students who used the restroom before 12:00 PM will be automatically removed from the table at noon.</li>
+        <li><strong>Afternoon Users (PM):</strong> Students who used the restroom after 12:00 PM will be automatically removed from the table at midnight.</li>
+        <li><strong>Manual Removal:</strong> You can still manually remove students by clicking the blue info button (instead of the red X) in the Remove column for students who have "ALREADY WENT" status.</li>
+      </ul>
+
       <h3>Tips & Troubleshooting</h3>
       <ul>
         <li>Use the <strong>Log Students</strong> menu item in the <strong>🚽 Restroom Log</strong> menu to reopen the sidebar if it is closed.</li>
         <li>If the script reports permissions errors, ensure you have authorized the Apps Script project to access the sheet and your email (first-time authorization required).</li>
         <li>If the script is already authorized, and you still have issues, verify that your account has the necessary access rights. You can add teachers or update their information by going to <strong>Manage Teachers</strong> in the <strong>🚽 Restroom Log</strong> menu. To edit, click on the <strong>Edit</strong> button next to their name and scroll down to the bottom of the window to update the information then click <strong>Save Changes</strong>. To add a teacher, scroll down to the bottom of the <strong>Manage Teachers</strong> window and fill out the form, then click <strong>Add Teacher</strong>.</li>
+        <li>The system automatically checks for expired students every minute, with more frequent checks around noon and midnight transition times.</li>
       </ul>
     </div>
     <div style="text-align:right; margin-top:12px;">

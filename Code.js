@@ -2510,13 +2510,24 @@ function api_getActiveStudentsFinal() {
       }
     }
     
-    // Find active students (same logic as debug function)
+    // Find all students with activity today (active + completed)
     for (const [studentName, activities] of Object.entries(todayStudentActivity)) {
       const latestActivity = activities[activities.length - 1];
       
       if (latestActivity.backTime) {
-        // Student has returned - not active
-        console.log(`${studentName}: Returned (backTime: ${latestActivity.backTime})`);
+        // Student has completed their trip - include them with "ALREADY WENT" status
+        console.log(`${studentName}: Completed trip (outTime: ${latestActivity.outTime}, backTime: ${latestActivity.backTime})`);
+        activeStudents.push({
+          name: studentName,
+          id: latestActivity.id,
+          nameId: studentName,
+          gender: latestActivity.gender,
+          teacher: latestActivity.teacher,
+          outTime: latestActivity.outTime,
+          backTime: latestActivity.backTime,
+          holdNotice: "",
+          usageLimitReached: false,
+        });
       } else if (latestActivity.outTime) {
         // Student is currently out
         console.log(`${studentName}: Currently OUT since ${latestActivity.outTime}`);
@@ -2548,7 +2559,7 @@ function api_getActiveStudentsFinal() {
       }
     }
     
-    console.log(`Found ${activeStudents.length} active students (final version)`);
+    console.log(`Found ${activeStudents.length} students with restroom activity today (active + completed)`);
     
     const result = {
       success: true,
@@ -2558,6 +2569,7 @@ function api_getActiveStudentsFinal() {
       metadata: {
         timestamp: new Date().toISOString(),
         activeStudentCount: activeStudents.length,
+        totalStudentCount: activeStudents.length,
       },
     };
     
@@ -3263,6 +3275,109 @@ function api_updateStatusSimple(studentName, action, teacherName, gender) {
     
     console.log("Returning error response:", errorResponse);
     console.log("=== API updateStatusSimple END (ERROR) ===");
+    return errorResponse;
+  }
+}
+
+/**
+ * Remove a student's log entries from the Log sheet for today
+ * @param {string} studentName - Name of the student to remove
+ * @returns {Object} - Result with number of entries removed
+ */
+function api_removeStudentFromLog(studentName) {
+  console.log(`=== API removeStudentFromLog START: ${studentName} ===`);
+  
+  try {
+    if (!studentName) {
+      throw new Error("Student name is required");
+    }
+
+    const ss = getSpreadsheet();
+    const logSheet = ss.getSheetByName("Log");
+    
+    if (!logSheet) {
+      console.log("No Log sheet found");
+      return {
+        success: true,
+        entriesRemoved: 0,
+        message: "No Log sheet exists"
+      };
+    }
+
+    const data = logSheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      console.log("Log sheet is empty or only has headers");
+      return {
+        success: true,
+        entriesRemoved: 0,
+        message: "Log sheet is empty"
+      };
+    }
+
+    // Get today's date for comparison
+    const today = new Date();
+    const rowsToDelete = [];
+    let entriesRemoved = 0;
+
+    // Find all rows for this student from today (iterate backwards to collect row numbers)
+    for (let r = data.length - 1; r >= 1; r--) {
+      const row = data[r];
+      
+      // Skip empty rows or entries for other students
+      if (!row[0] || !row[1] || row[1] !== studentName) continue;
+      
+      const logDate = row[0];
+      
+      // Check if this entry is from today
+      let isToday = false;
+      if (logDate) {
+        try {
+          const entryDate = new Date(logDate);
+          if (!isNaN(entryDate.getTime())) {
+            isToday = entryDate.getFullYear() === today.getFullYear() &&
+                     entryDate.getMonth() === today.getMonth() &&
+                     entryDate.getDate() === today.getDate();
+          }
+        } catch (e) {
+          // Skip entries with invalid dates
+          continue;
+        }
+      }
+      
+      if (isToday) {
+        rowsToDelete.push(r + 1); // +1 because sheet rows are 1-indexed
+        entriesRemoved++;
+        console.log(`Found entry to delete at row ${r + 1}: ${JSON.stringify(row)}`);
+      }
+    }
+
+    // Delete rows (from highest row number to lowest to maintain correct indices)
+    rowsToDelete.forEach(rowNumber => {
+      console.log(`Deleting row ${rowNumber}`);
+      logSheet.deleteRow(rowNumber);
+    });
+
+    console.log(`Successfully removed ${entriesRemoved} log entries for ${studentName}`);
+    
+    const response = {
+      success: true,
+      entriesRemoved: entriesRemoved,
+      message: `Removed ${entriesRemoved} log entries for ${studentName}`
+    };
+    
+    console.log("=== API removeStudentFromLog END (SUCCESS) ===");
+    return response;
+    
+  } catch (error) {
+    console.error(`Error in api_removeStudentFromLog for ${studentName}:`, error);
+    
+    const errorResponse = {
+      success: false,
+      error: error.message,
+      entriesRemoved: 0
+    };
+    
+    console.log("=== API removeStudentFromLog END (ERROR) ===");
     return errorResponse;
   }
 }
