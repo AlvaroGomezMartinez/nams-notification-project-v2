@@ -61,6 +61,14 @@
       background-color: #b2dfdb !important;
     }
 
+    .blue {
+      background-color: #292f61 !important;
+    }
+
+    .white-text {
+      color: white !important;
+    }
+
     /* Button styles */
     .btn {
       display: inline-block;
@@ -449,24 +457,13 @@
       <!-- Auto-detected teacher info -->
       <div class="row" x-show="detectedTeacher">
         <div class="col s12">
-          <div class="card-panel teal lighten-4" style="padding: 10px">
-            <span class="black-text">
+          <div class="card-panel blue" style="padding: 10px">
+            <span class="white-text">
               <i class="material-icons tiny" style="vertical-align: text-bottom">person</i>
               Hello, <strong x-text="detectedTeacher"></strong>
               <small x-show="userEmail">(logged in as: <span x-text="userEmail"></span>)</small>
             </span>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Refresh controls -->
-    <div class="row" style="margin-bottom: 10px">
-      <div class="col s12">
-        <div class="card-panel" style="padding: 10px">
-          <button class="btn" @click="manualRefresh()" style="margin-right: 10px">
-            <i class="material-icons left">refresh</i>Refresh Data
-          </button>
         </div>
       </div>
     </div>
@@ -566,6 +563,17 @@
       <!-- Active Students table column -->
       <div class="col s12">
         <h3>RESTROOM LIST</h3>
+
+        <!-- Refresh controls -->
+        <div class="row" style="margin-bottom: 10px">
+          <div class="col s3">
+            <div class="card-panel" style="padding: 10px">
+              <button class="btn" @click="manualRefresh()" style="margin-right: 10px">
+                <i class="material-icons left">refresh</i>Refresh Data
+              </button>
+            </div>
+          </div>
+        </div>
 
         <div class="table-container" style="position: relative">
           <!-- Loading Spinner Overlay -->
