@@ -569,7 +569,7 @@
           <div class="col s3">
             <div class="card-panel" style="padding: 10px">
               <button class="btn" @click="manualRefresh()" style="margin-right: 10px">
-                <i class="material-icons left">refresh</i>Refresh Data
+                <i class="material-icons left">refresh</i>Reload Students Currently Out
               </button>
             </div>
           </div>
@@ -1201,12 +1201,21 @@
             console.log(
               `OptimisticUI: Marking ${student.name} OUT optimistically at ${timeString}`,
             );
+
+            // If this student was waiting and is now going out, update queue positions for remaining students
+            if (student.holdNotice && !student.outTime) {
+              this._updateQueuePositionsOptimistically(student.gender, student.name);
+            }
           }
         } else if (action === "back") {
           optimisticState.backTime = timeString;
           console.log(
             `OptimisticUI: Marking ${student.name} BACK optimistically at ${timeString}`,
           );
+
+          // When a student returns, the next student in queue can potentially go out
+          // The queue positions themselves don't change, but we should trigger a refresh
+          // to check if the next student can now go out immediately
         }
 
         // Track this pending update
@@ -1225,6 +1234,73 @@
 
         console.log(`OptimisticUI: Applied optimistic update ${updateId}`);
         return updateId;
+      }
+
+      /**
+       * Update queue positions optimistically for remaining waiting students
+       * Called when a student moves from waiting to out
+       * @param {string} gender - Gender of students to update ("G" or "B")
+       * @param {string} studentMovingOut - Name of student who is moving from waiting to out
+       */
+      _updateQueuePositionsOptimistically(gender, studentMovingOut) {
+        if (!this.appContext || !this.appContext.students) {
+          console.log("OptimisticUI: No app context available for queue position updates");
+          return;
+        }
+
+        console.log(`OptimisticUI: Updating queue positions for gender ${gender}, student ${studentMovingOut} moving out`);
+
+        // Find all waiting students of the same gender (excluding the one moving out)
+        const waitingStudents = this.appContext.students.filter(s =>
+          s.gender === gender &&
+          s.holdNotice &&
+          !s.outTime &&
+          s.name !== studentMovingOut
+        );
+
+        if (waitingStudents.length === 0) {
+          console.log("OptimisticUI: No waiting students to update positions for");
+          return;
+        }
+
+        // Sort by current position to maintain order
+        waitingStudents.sort((a, b) => {
+          const getPosition = (student) => {
+            const match = student.holdNotice.match(/Position (\d+)/);
+            return match ? parseInt(match[1]) : 999;
+          };
+          return getPosition(a) - getPosition(b);
+        });
+
+        console.log(`OptimisticUI: Found ${waitingStudents.length} waiting students to reposition:`,
+          waitingStudents.map(s => `${s.name} (current pos: ${this._extractPosition(s.holdNotice)})`));
+
+        // Update positions sequentially (1, 2, 3, etc.)
+        waitingStudents.forEach((student, index) => {
+          const newPosition = index + 1;
+          const currentPosition = this._extractPosition(student.holdNotice);
+
+          if (currentPosition !== newPosition) {
+            const newHoldNotice = `Waiting in line. Position ${newPosition}.`;
+            console.log(`OptimisticUI: Updating ${student.name} from position ${currentPosition} to ${newPosition}`);
+
+            // Update the student object directly
+            student.holdNotice = newHoldNotice;
+          }
+        });
+
+        console.log("OptimisticUI: Queue position updates complete");
+      }
+
+      /**
+       * Extract position number from hold notice string
+       * @param {string} holdNotice - Hold notice string like "Waiting in line. Position 2."
+       * @returns {number} - Position number or 0 if not found
+       */
+      _extractPosition(holdNotice) {
+        if (!holdNotice) return 0;
+        const match = holdNotice.match(/Position (\d+)/);
+        return match ? parseInt(match[1]) : 0;
       }
 
       /**
@@ -3233,7 +3309,7 @@ Check browser console for detailed logs.
                     if (this.smartPolling && this.smartPolling.isActive) {
                       this.smartPolling.checkForUpdates();
                     }
-                  }, 100); // Small delay to ensure server-side processing is complete
+                  }, 50); // Reduced delay for faster queue position updates
                 },
               );
             })
@@ -3715,7 +3791,7 @@ Check browser console for detailed logs.
 
           // If student is currently out (has out time but no back time)
           if (stu.outTime && !stu.backTime) {
-            return "CURRENTLY OUT";
+            return "OUT";
           }
 
           // If student has a hold notice but no out time, they are waiting
@@ -3957,7 +4033,7 @@ Check browser console for detailed logs.
                       if (this.smartPolling && this.smartPolling.isActive) {
                         this.smartPolling.checkForUpdates();
                       }
-                    }, 100); // Small delay to ensure server-side processing is complete
+                    }, 50); // Reduced delay for faster queue position updates
                   },
                 );
               } else {
@@ -4095,7 +4171,7 @@ Check browser console for detailed logs.
                       if (this.smartPolling && this.smartPolling.isActive) {
                         this.smartPolling.checkForUpdates();
                       }
-                    }, 100); // Small delay to ensure server-side processing is complete
+                    }, 50); // Reduced delay for faster queue position updates
                   },
                 );
               } else {
@@ -4265,10 +4341,10 @@ Check browser console for detailed logs.
           this.searchTerm = "";
           this.searchResults = [];
 
-          // Check if student is already in active list
+          // Check if student has already used the restroom
           const existingStudent = this.students.find(s => s.name === student.name);
           if (existingStudent) {
-            alert(`${student.name} is already in the active management list.`);
+            alert(`${student.name} has already gone this half of the day.`);
             return;
           }
 

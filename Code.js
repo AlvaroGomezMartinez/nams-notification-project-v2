@@ -665,6 +665,9 @@ function _updateWaitingEntryToOut(
       );
       logSheet.getRange(r + 1, 6).setValue(outTimeFormatted); // Out Time (column F)
       logSheet.getRange(r + 1, 8).setValue(""); // Clear Hold Notice (column H)
+      
+      // Recalculate queue positions for remaining waiting students of the same gender
+      _recalculateQueuePositions(gender);
       return;
     }
   }
@@ -674,6 +677,83 @@ function _updateWaitingEntryToOut(
     `No waiting entry found for ${studentName}, creating new out entry`
   );
   _logOutEntry(studentName, studentId, gender, teacherName, outTime);
+}
+
+/**
+ * Recalculate and update queue positions for remaining waiting students of the same gender
+ * This should be called after a student moves from waiting to out
+ * @param {string} gender - The gender ("G" or "B") to recalculate positions for
+ */
+function _recalculateQueuePositions(gender) {
+  console.log(`Recalculating queue positions for gender: ${gender}`);
+  
+  const ss = getSpreadsheet();
+  const logSheet = ss.getSheetByName("Log");
+  if (!logSheet) return;
+
+  const date = new Date().toLocaleDateString();
+  const data = logSheet.getDataRange().getValues();
+  
+  // Find all waiting students of the same gender today
+  const waitingEntries = [];
+  
+  for (let r = 1; r < data.length; r++) {
+    const row = data[r];
+    const entryDate = row[0] ? new Date(row[0]).toLocaleDateString() : "";
+    const entryName = row[1];
+    const entryGender = row[3];
+    const entryOutTime = row[5];
+    const entryBackTime = row[6];
+    const entryHoldNotice = row[7];
+    
+    // Find students who are waiting (have hold notice, no out time, no back time)
+    if (
+      entryDate === date &&
+      entryGender === gender &&
+      entryHoldNotice &&
+      !entryOutTime &&
+      !entryBackTime
+    ) {
+      // Extract current position from hold notice
+      const positionMatch = entryHoldNotice.match(/Position (\d+)/);
+      const currentPosition = positionMatch ? parseInt(positionMatch[1]) : 999;
+      
+      waitingEntries.push({
+        rowIndex: r,
+        name: entryName,
+        currentPosition: currentPosition,
+        holdNotice: entryHoldNotice
+      });
+    }
+  }
+  
+  if (waitingEntries.length === 0) {
+    console.log(`No waiting students found for gender ${gender}`);
+    return;
+  }
+  
+  // Sort by current position to maintain order
+  waitingEntries.sort((a, b) => a.currentPosition - b.currentPosition);
+  
+  console.log(`Found ${waitingEntries.length} waiting students to reposition:`, 
+    waitingEntries.map(e => `${e.name} (pos ${e.currentPosition})`));
+  
+  // Update positions sequentially (1, 2, 3, etc.)
+  for (let i = 0; i < waitingEntries.length; i++) {
+    const entry = waitingEntries[i];
+    const newPosition = i + 1;
+    const newHoldNotice = `Waiting in line. Position ${newPosition}.`;
+    
+    // Only update if position changed
+    if (entry.currentPosition !== newPosition) {
+      console.log(`Updating ${entry.name} from position ${entry.currentPosition} to ${newPosition}`);
+      logSheet.getRange(entry.rowIndex + 1, 8).setValue(newHoldNotice); // Column H (Hold Notice)
+    } else {
+      console.log(`${entry.name} position ${newPosition} unchanged`);
+    }
+  }
+  
+  console.log(`Queue position recalculation complete for gender ${gender}`);
 }
 
 /**
@@ -893,6 +973,10 @@ function _logBackEntry(studentName, studentId, gender, teacherName, backTime) {
       console.log(
         `_logBackEntry: Successfully updated existing entry for ${studentName}`
       );
+      
+      // When a student returns, recalculate queue positions for their gender
+      // This ensures the next student in line gets the correct position
+      _recalculateQueuePositions(gender);
       return;
     }
   }
